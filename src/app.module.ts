@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { join } from 'path';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 
 import { validateEnv } from '@/config/env.validation';
 import { ConfigLoader } from '@/config/configuration';
@@ -14,6 +15,9 @@ import { Zone } from '@/database/entities/zone.entity';
 import { Agent } from '@/database/entities/agent.entity';
 import { Order } from '@/database/entities/order.entity';
 import { Payment } from '@/database/entities/payment.entity';
+
+import { WhatsappModule } from '@/whatsapp/whatsapp.module';
+import { VisionModule } from '@/vision/vision.module';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -58,6 +62,13 @@ import { AppService } from './app.service';
     }),
 
     AuthModule,
+
+    // Global event emitter for domain events (used by Whatsapp webhook → Vision / Order flows)
+    EventEmitterModule.forRoot(),
+
+    // WhatsApp Cloud API + Vision analysis modules
+    WhatsappModule,
+    VisionModule,
   ],
   controllers: [AppController],
   providers: [

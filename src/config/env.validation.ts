@@ -22,6 +22,7 @@ export interface EnvConfig {
   // WhatsApp Business API (Meta Cloud API)
   WHATSAPP_API_TOKEN: string;
   WHATSAPP_VERIFY_TOKEN: string;
+  WHATSAPP_PHONE_NUMBER_ID: string;
 
   // OpenAI / LLM provider
   OPENAI_API_KEY: string;
@@ -84,6 +85,11 @@ export const envValidationSchema = Joi.object<EnvConfig>({
     .required()
     .description('Webhook verification token shared with Meta WhatsApp'),
 
+  WHATSAPP_PHONE_NUMBER_ID: Joi.string()
+    .min(10)
+    .required()
+    .description('WhatsApp Phone Number ID (from Meta Business Manager) used as sender'),
+
   OPENAI_API_KEY: Joi.string()
     .pattern(/^sk-/)
     .required()
@@ -141,7 +147,7 @@ export function validateEnv(config: Record<string, unknown>): EnvConfig {
     console.error('Required environment keys:');
     console.error('  DB_HOST, DB_PORT, DB_USERNAME, DB_PASSWORD, DB_NAME');
     console.error('  REDIS_URL, JWT_SECRET, WHATSAPP_API_TOKEN,');
-    console.error('  WHATSAPP_VERIFY_TOKEN, OPENAI_API_KEY');
+    console.error('  WHATSAPP_VERIFY_TOKEN, WHATSAPP_PHONE_NUMBER_ID, OPENAI_API_KEY');
     console.error(
       '═══════════════════════════════════════════════════════════════\n',
     );

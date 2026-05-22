@@ -1,10 +1,20 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import * as express from 'express';
 import { AppModule } from './app.module';
 import { ConfigLoader } from '@/config/configuration';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // === Raw body parser for WhatsApp webhook signature verification ===
+  // Must be mounted BEFORE the global JSON body parser for the specific route.
+  // This gives us the exact Buffer needed for HMAC validation in WhatsappController.
+  app.use(
+    '/webhook/whatsapp',
+    express.raw({ type: 'application/json', limit: '1mb' }),
+  );
 
   // Retrieve the validated configuration loader (guaranteed non-null after ConfigModule)
   const config = app.get(ConfigLoader);

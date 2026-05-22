@@ -92,6 +92,11 @@ export class ConfigLoader {
     return this.configService.getOrThrow<string>('WHATSAPP_VERIFY_TOKEN');
   }
 
+  /** Phone Number ID (sender) for outbound WhatsApp messages */
+  get whatsappPhoneNumberId(): string {
+    return this.configService.getOrThrow<string>('WHATSAPP_PHONE_NUMBER_ID');
+  }
+
   // ---------------------------------------------------------------------------
   // OpenAI / LLM
   // ---------------------------------------------------------------------------
@@ -140,6 +145,7 @@ export class ConfigLoader {
       jwtSecret: '***REDACTED***',
       whatsappApiToken: '***REDACTED***',
       whatsappVerifyToken: '***REDACTED***',
+      whatsappPhoneNumberId: this.whatsappPhoneNumberId,
       openaiApiKey: '***REDACTED***',
     };
   }
