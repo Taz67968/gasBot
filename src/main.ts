@@ -1,10 +1,35 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { ConfigLoader } from '@/config/configuration';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  await app.listen(process.env.PORT ?? 3000);
+
+  // Retrieve the validated configuration loader (guaranteed non-null after ConfigModule)
+  const config = app.get(ConfigLoader);
+
+  // Enterprise startup banner with safe (redacted) configuration snapshot
+  console.log('\n');
+  console.log(
+    '═══════════════════════════════════════════════════════════════',
+  );
+  console.log(
+    `🚀  GasBot API starting in ${config.nodeEnv.toUpperCase()} mode`,
+  );
+  console.log(
+    '═══════════════════════════════════════════════════════════════',
+  );
+  console.log('Loaded configuration (secrets masked):');
+  console.dir(config.safeConfigSnapshot, { depth: null, colors: true });
+  console.log(
+    '═══════════════════════════════════════════════════════════════\n',
+  );
+
+  const port = config.port;
+  await app.listen(port);
+
+  console.log(`✅  GasBot API is listening on http://localhost:${port}\n`);
 }
 
 bootstrap().catch((error) => {
