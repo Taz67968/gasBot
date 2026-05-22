@@ -18,6 +18,8 @@ import { Payment } from '@/database/entities/payment.entity';
 
 import { WhatsappModule } from '@/whatsapp/whatsapp.module';
 import { VisionModule } from '@/vision/vision.module';
+import { CustomerModule } from '@/customer/customer.module';
+import { ConversationModule } from '@/conversation/conversation.module';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -69,6 +71,10 @@ import { AppService } from './app.service';
     // WhatsApp Cloud API + Vision analysis modules
     WhatsappModule,
     VisionModule,
+
+    // Customer profile + Redis-driven conversational state machine
+    CustomerModule,
+    ConversationModule,
   ],
   controllers: [AppController],
   providers: [
