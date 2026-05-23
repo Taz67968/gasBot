@@ -20,6 +20,9 @@ import { WhatsappModule } from '@/whatsapp/whatsapp.module';
 import { VisionModule } from '@/vision/vision.module';
 import { CustomerModule } from '@/customer/customer.module';
 import { ConversationModule } from '@/conversation/conversation.module';
+import { BullModule } from '@nestjs/bullmq';
+import { GeoModule } from '@/geo/geo.module';
+import { MatchingModule } from '@/matching/matching.module';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -75,6 +78,25 @@ import { AppService } from './app.service';
     // Customer profile + Redis-driven conversational state machine
     CustomerModule,
     ConversationModule,
+
+    // BullMQ connection (shared Redis instance used by matching queue)
+    BullModule.forRootAsync({
+      inject: [ConfigLoader],
+      useFactory: (config: ConfigLoader) => ({
+        connection: {
+          host: new URL(config.redisUrl).hostname,
+          port: parseInt(new URL(config.redisUrl).port || '6379', 10),
+          // password extraction if rediss:// or redis:// with auth
+          ...(new URL(config.redisUrl).password
+            ? { password: new URL(config.redisUrl).password }
+            : {}),
+        },
+      }),
+    }),
+
+    // Geospatial + Real-time driver assignment modules
+    GeoModule,
+    MatchingModule,
   ],
   controllers: [AppController],
   providers: [

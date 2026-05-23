@@ -6,6 +6,7 @@ import { CustomerService } from '@/customer/customer.service';
 import { WhatsappService } from '@/whatsapp/whatsapp.service';
 import { VisionService, GasCylinderAnalysis } from '@/vision/vision.service';
 import { MessageReceivedEvent } from '@/whatsapp/events/message-received.event';
+import { MatchingService } from '@/matching/matching.service';
 
 /**
  * ConversationProcessor
@@ -38,6 +39,7 @@ export class ConversationProcessor {
     private readonly customerService: CustomerService,
     private readonly whatsappService: WhatsappService,
     private readonly visionService: VisionService,
+    private readonly matchingService: MatchingService,
     _eventEmitter: EventEmitter2, // consumed by @OnEvent decorator
   ) {}
 
@@ -275,7 +277,13 @@ export class ConversationProcessor {
           : '✅ Order confirmed! An agent will contact you shortly for delivery.',
       );
 
-      // TODO: emit OrderCreatedEvent or call OrderService here
+      // Trigger the real-time geospatial driver assignment cascade
+      if (session.data.orderId) {
+        await this.matchingService.startAssignmentCascade(session.data.orderId);
+      } else {
+        this.logger.warn(`No orderId found in session for ${phone} — cascade not started`);
+      }
+
       this.logger.log(`Order confirmed for ${phone} via Cash on Delivery`);
     } else {
       await this.resetToIdle(phone);
