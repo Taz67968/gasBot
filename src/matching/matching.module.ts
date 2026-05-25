@@ -6,6 +6,7 @@ import { MatchingProcessor } from './matching.processor';
 import { MatchingResponseListener } from './matching-response.listener';
 import { GeoModule } from '@/geo/geo.module';
 import { WhatsappModule } from '@/whatsapp/whatsapp.module';
+import { DispatchModule } from '@/dispatch/dispatch.module';
 import { Order } from '@/database/entities/order.entity';
 
 /**
@@ -22,6 +23,7 @@ import { Order } from '@/database/entities/order.entity';
     TypeOrmModule.forFeature([Order]),
     GeoModule,
     WhatsappModule,
+    DispatchModule,
   ],
   providers: [
     MatchingService,

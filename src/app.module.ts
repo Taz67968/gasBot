@@ -24,6 +24,8 @@ import { BullModule } from '@nestjs/bullmq';
 import { GeoModule } from '@/geo/geo.module';
 import { MatchingModule } from '@/matching/matching.module';
 import { PaymentsModule } from '@/payments/payments.module';
+import { DispatchModule } from '@/dispatch/dispatch.module';
+import { TrackingModule } from '@/tracking/tracking.module';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -101,6 +103,10 @@ import { AppService } from './app.service';
 
     // Payments & Settlements (Cash on Delivery / Pay by Hand)
     PaymentsModule,
+
+    // Driver dispatch communications + high-frequency Redis geospatial tracking
+    DispatchModule,
+    TrackingModule,
   ],
   controllers: [AppController],
   providers: [

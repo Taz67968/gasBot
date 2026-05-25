@@ -5,9 +5,9 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import Redis from 'ioredis';
 import { GeoService } from '@/geo/geo.service';
-import { WhatsappService } from '@/whatsapp/whatsapp.service';
 import { ConfigLoader } from '@/config/configuration';
 import { OrderStatus } from '@/common/enums/order-status.enum';
+import { DispatchService } from '@/dispatch/dispatch.service';
 import { StartCascadeJob, TimeoutCascadeJob } from './interfaces/matching-job.interface';
 
 const CASCADE_TTL = 30 * 60; // 30 minutes max cascade lifetime
@@ -21,7 +21,7 @@ export class MatchingProcessor extends WorkerHost {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly geoService: GeoService,
-    private readonly whatsappService: WhatsappService,
+    private readonly dispatchService: DispatchService,
     config: ConfigLoader,
     @InjectQueue('driver-matching')
     private readonly matchingQueue: Queue,
@@ -108,17 +108,20 @@ export class MatchingProcessor extends WorkerHost {
 
     const agentPhone = agentRow.phone;
 
-    // Send interactive buttons via WhatsApp
-    await this.whatsappService.sendInteractiveButtons(
+    // Send rich conversational dispatch offer via DispatchService
+    await this.dispatchService.sendAssignmentOffer(
       agentPhone,
-      `New GasBot delivery request (Order #${orderId.slice(0, 8)}). Accept?`,
-      [
-        { id: `accept_${orderId}`, title: 'Accept' },
-        { id: `decline_${orderId}`, title: 'Decline' },
-      ],
+      {
+        orderReference: orderId.slice(0, 8),
+        gasType: 'Standard Gas Cylinder',
+        sizeKg: 12,
+        amountXaf: 8500,
+        estimatedDistanceMeters: 4200,
+      },
+      orderId,
     );
 
-    this.logger.log(`Offered order ${orderId} to agent ${agentId} (attempt ${attemptIndex})`);
+    this.logger.log(`Rich dispatch offer sent to agent ${agentId} for order ${orderId}`);
 
     // Schedule 90-second timeout job
     const timeoutData: TimeoutCascadeJob = {

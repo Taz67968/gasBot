@@ -5,6 +5,7 @@ import { DataSource } from 'typeorm';
 import { MessageReceivedEvent } from '@/whatsapp/events/message-received.event';
 import { OrderStatus } from '@/common/enums/order-status.enum';
 import { WhatsappService } from '@/whatsapp/whatsapp.service';
+import { DispatchService } from '@/dispatch/dispatch.service';
 
 /**
  * MatchingResponseListener
@@ -19,6 +20,7 @@ export class MatchingResponseListener {
     @InjectDataSource()
     private readonly dataSource: DataSource,
     private readonly whatsappService: WhatsappService,
+    private readonly dispatchService: DispatchService,
   ) {}
 
   @OnEvent('message.received')
@@ -90,13 +92,27 @@ export class MatchingResponseListener {
 
       this.logger.log(`Agent ${agentId} successfully claimed order ${orderId}`);
 
-      // Notify the agent
-      await this.whatsappService.sendText(
-        agentPhone,
-        `✅ Assignment confirmed for Order #${orderId.slice(0, 8)}. Proceed to the delivery location.`,
+      // Fetch delivery location and amount for rich map link
+      const [orderDetails] = await this.dataSource.query(
+        `SELECT ST_AsText(delivery_location) as wkt, total_xaf FROM orders WHERE id = $1`,
+        [orderId],
       );
 
-      // TODO: Notify customer that a driver has been assigned
+      if (orderDetails?.wkt) {
+        await this.dispatchService.sendAcceptanceConfirmationWithMap(
+          agentPhone,
+          orderId.slice(0, 8),
+          orderDetails.wkt,
+          parseInt(orderDetails.total_xaf, 10) || 0,
+        );
+      } else {
+        await this.whatsappService.sendText(
+          agentPhone,
+          `✅ Assignment confirmed for Order #${orderId.slice(0, 8)}. Proceed to the delivery location.`,
+        );
+      }
+
+      // TODO: Notify customer that a driver has been assigned (via WhatsApp)
     } catch (error: any) {
       await queryRunner.rollbackTransaction();
       this.logger.error(`Failed to claim order ${orderId} for agent ${agentId}: ${error.message}`);
