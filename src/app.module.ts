@@ -23,6 +23,7 @@ import { ConversationModule } from '@/conversation/conversation.module';
 import { BullModule } from '@nestjs/bullmq';
 import { GeoModule } from '@/geo/geo.module';
 import { MatchingModule } from '@/matching/matching.module';
+import { PaymentsModule } from '@/payments/payments.module';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -97,6 +98,9 @@ import { AppService } from './app.service';
     // Geospatial + Real-time driver assignment modules
     GeoModule,
     MatchingModule,
+
+    // Payments & Settlements (Cash on Delivery / Pay by Hand)
+    PaymentsModule,
   ],
   controllers: [AppController],
   providers: [
