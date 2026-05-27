@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: gasbot-api
+    runtime: docker
+    plan: starter
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: DB_HOST
+        value: ep-steep-mode-ak644w2e-pooler.c-3.us-west-2.aws.neon.tech
+      - key: DB_PORT
+        value: 5432
+      - key: DB_USERNAME
+        value: neondb_owner
+      - key: DB_PASSWORD
+        fromSecret: DB_PASSWORD
+      - key: DB_NAME
+        value: neondb
+      - key: REDIS_URL
+        fromSecret: REDIS_URL
+      - key: JWT_SECRET
+        fromSecret: JWT_SECRET
+      - key: WHATSAPP_API_TOKEN
+        fromSecret: WHATSAPP_API_TOKEN
+      - key: WHATSAPP_VERIFY_TOKEN
+        fromSecret: WHATSAPP_VERIFY_TOKEN
+      - key: OPENAI_API_KEY
+        fromSecret: OPENAI_API_KEY
+    healthCheckPath: /
+    autoDeploy: true
