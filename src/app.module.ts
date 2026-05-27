@@ -66,12 +66,12 @@ import { AppService } from './app.service';
           config.nodeEnv !== 'development'
             ? { rejectUnauthorized: false }
             : false,
-        extra: {
-          connectionTimeoutMillis: 10000,
-          idleTimeoutMillis: 30000,
-        },
         // Extra production hardening
         maxQueryExecutionTime: 10000,
+        connectTimeout: 10000,
+        extra: {
+          ssl: config.nodeEnv !== 'development',
+        },
       }),
     }),
 
@@ -100,6 +100,10 @@ import { AppService } from './app.service';
             port: parseInt(url.port || '6379', 10),
             password: url.password || undefined,
             tls: config.redisUrl.startsWith('rediss://') ? {} : undefined,
+          },
+          defaultJobOptions: {
+            removeOnComplete: true,
+            removeOnFail: 100,
           },
         };
       },
