@@ -31,6 +31,7 @@ export class TokenService implements OnModuleDestroy {
       maxRetriesPerRequest: 3,
       enableReadyCheck: true,
       lazyConnect: true,
+      tls: this.config.redisUrl.startsWith('rediss://') ? {} : undefined,
     });
 
     this.redis.on('error', (err) => {

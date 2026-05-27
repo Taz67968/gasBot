@@ -63,7 +63,7 @@ import { AppService } from './app.service';
         synchronize: config.nodeEnv === 'test', // auto-sync schema for testing
         logging: config.nodeEnv !== 'production',
         ssl:
-          config.nodeEnv === 'production'
+          config.nodeEnv === 'production' || config.dbHost?.includes('neon.tech')
             ? { rejectUnauthorized: false }
             : false,
         // Extra production hardening
@@ -88,16 +88,17 @@ import { AppService } from './app.service';
     BullModule.forRootAsync({
       imports: [ConfigurationModule],
       inject: [ConfigLoader],
-      useFactory: (config: ConfigLoader) => ({
-        connection: {
-          host: new URL(config.redisUrl).hostname,
-          port: parseInt(new URL(config.redisUrl).port || '6379', 10),
-          // password extraction if rediss:// or redis:// with auth
-          ...(new URL(config.redisUrl).password
-            ? { password: new URL(config.redisUrl).password }
-            : {}),
-        },
-      }),
+      useFactory: (config: ConfigLoader) => {
+        const url = new URL(config.redisUrl);
+        return {
+          connection: {
+            host: url.hostname,
+            port: parseInt(url.port || '6379', 10),
+            password: url.password || undefined,
+            tls: config.redisUrl.startsWith('rediss://') ? {} : undefined,
+          },
+        };
+      },
     }),
 
     // Geospatial + Real-time driver assignment modules

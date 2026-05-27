@@ -19,7 +19,7 @@ services:
       - key: DB_NAME
         value: neondb
       - key: REDIS_URL
-        fromSecret: REDIS_URL
+        value: rediss://default:gQAAAAAAAhjhAAIgcDFhNDZjZjZlOWU0YTQ0ZjY4YjYyZmQ2NzM5ZjYwYjE1Yw@select-bluejay-137441.upstash.io:6379
       - key: JWT_SECRET
         fromSecret: JWT_SECRET
       - key: WHATSAPP_API_TOKEN

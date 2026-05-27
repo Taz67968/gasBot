@@ -35,7 +35,9 @@ export class MatchingProcessor extends WorkerHost {
     private readonly matchingQueue: Queue,
   ) {
     super();
-    this.redis = new Redis(config.redisUrl);
+    this.redis = new Redis(config.redisUrl, {
+      tls: config.redisUrl.startsWith('rediss://') ? {} : undefined,
+    });
   }
 
   async process(

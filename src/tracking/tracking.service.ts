@@ -37,6 +37,7 @@ export class TrackingService {
     this.redis = new Redis(this.config.redisUrl, {
       maxRetriesPerRequest: 3,
       enableReadyCheck: true,
+      tls: this.config.redisUrl.startsWith('rediss://') ? {} : undefined,
     });
 
     this.redis.on('error', (err) => {
