@@ -63,9 +63,13 @@ import { AppService } from './app.service';
         synchronize: config.nodeEnv === 'test', // auto-sync schema for testing
         logging: config.nodeEnv !== 'production',
         ssl:
-          config.nodeEnv === 'production' || config.dbHost?.includes('neon.tech')
+          config.nodeEnv !== 'development'
             ? { rejectUnauthorized: false }
             : false,
+        extra: {
+          connectionTimeoutMillis: 10000,
+          idleTimeoutMillis: 30000,
+        },
         // Extra production hardening
         maxQueryExecutionTime: 10000,
       }),
