@@ -45,11 +45,15 @@ export class PaymentsService {
         .getOne();
 
       if (!payment) {
-        throw new NotFoundException(`Payment record for order ${orderId} not found`);
+        throw new NotFoundException(
+          `Payment record for order ${orderId} not found`,
+        );
       }
 
       if (payment.status === PaymentStatus.PAID_BY_HAND) {
-        throw new ConflictException('Payment has already been confirmed by an agent');
+        throw new ConflictException(
+          'Payment has already been confirmed by an agent',
+        );
       }
 
       if (!payment.order) {

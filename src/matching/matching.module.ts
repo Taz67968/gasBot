@@ -25,11 +25,7 @@ import { Order } from '@/database/entities/order.entity';
     WhatsappModule,
     DispatchModule,
   ],
-  providers: [
-    MatchingService,
-    MatchingProcessor,
-    MatchingResponseListener,
-  ],
+  providers: [MatchingService, MatchingProcessor, MatchingResponseListener],
   exports: [MatchingService],
 })
 export class MatchingModule {}

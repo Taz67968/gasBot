@@ -88,7 +88,9 @@ export const envValidationSchema = Joi.object<EnvConfig>({
   WHATSAPP_PHONE_NUMBER_ID: Joi.string()
     .min(10)
     .required()
-    .description('WhatsApp Phone Number ID (from Meta Business Manager) used as sender'),
+    .description(
+      'WhatsApp Phone Number ID (from Meta Business Manager) used as sender',
+    ),
 
   OPENAI_API_KEY: Joi.string()
     .pattern(/^sk-/)
@@ -147,7 +149,9 @@ export function validateEnv(config: Record<string, unknown>): EnvConfig {
     console.error('Required environment keys:');
     console.error('  DB_HOST, DB_PORT, DB_USERNAME, DB_PASSWORD, DB_NAME');
     console.error('  REDIS_URL, JWT_SECRET, WHATSAPP_API_TOKEN,');
-    console.error('  WHATSAPP_VERIFY_TOKEN, WHATSAPP_PHONE_NUMBER_ID, OPENAI_API_KEY');
+    console.error(
+      '  WHATSAPP_VERIFY_TOKEN, WHATSAPP_PHONE_NUMBER_ID, OPENAI_API_KEY',
+    );
     console.error(
       '═══════════════════════════════════════════════════════════════\n',
     );

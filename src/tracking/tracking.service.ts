@@ -67,7 +67,12 @@ export class TrackingService {
       const lastLat = parseFloat(lastPos.lat);
       const lastLng = parseFloat(lastPos.lng);
 
-      distanceMoved = this.calculateHaversineDistance(lastLat, lastLng, lat, lng);
+      distanceMoved = this.calculateHaversineDistance(
+        lastLat,
+        lastLng,
+        lat,
+        lng,
+      );
 
       if (distanceMoved < this.MOVEMENT_THRESHOLD_METERS) {
         shouldWriteToDb = false;
@@ -109,9 +114,13 @@ export class TrackingService {
           [lng, lat, agentId],
         );
         updatedDb = true;
-        this.logger.log(`Agent ${agentId} location persisted to DB (moved ${distanceMoved?.toFixed(1) || 'N/A'}m)`);
+        this.logger.log(
+          `Agent ${agentId} location persisted to DB (moved ${distanceMoved?.toFixed(1) || 'N/A'}m)`,
+        );
       } catch (error: any) {
-        this.logger.error(`Failed to update agent ${agentId} location in DB: ${error.message}`);
+        this.logger.error(
+          `Failed to update agent ${agentId} location in DB: ${error.message}`,
+        );
         // Do not throw — Redis is still updated for real-time use
       }
     }
@@ -171,7 +180,9 @@ export class TrackingService {
   /**
    * Optional helper: Get current live position from Redis GeoSet.
    */
-  async getLiveAgentPosition(agentId: string): Promise<{ lat: number; lng: number } | null> {
+  async getLiveAgentPosition(
+    agentId: string,
+  ): Promise<{ lat: number; lng: number } | null> {
     const result = await this.redis.geopos(this.GEO_KEY, agentId);
     if (!result || !result[0]) return null;
 

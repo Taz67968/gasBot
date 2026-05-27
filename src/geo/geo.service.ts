@@ -66,7 +66,7 @@ export class GeoService {
 
     try {
       const rows = await this.dataSource.query(query, [
-        lng,                    // Note: PostGIS ST_MakePoint(lng, lat)
+        lng, // Note: PostGIS ST_MakePoint(lng, lat)
         lat,
         AgentStatus.ACTIVE,
         radiusMeters,
@@ -84,7 +84,9 @@ export class GeoService {
         };
       });
     } catch (error: any) {
-      this.logger.error(`PostGIS nearest agents query failed: ${error.message}`);
+      this.logger.error(
+        `PostGIS nearest agents query failed: ${error.message}`,
+      );
       throw error;
     }
   }

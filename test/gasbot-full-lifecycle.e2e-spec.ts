@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
+import * as express from 'express';
 import { AppModule } from '../src/app.module';
 import { ConfigLoader } from '../src/config/configuration';
 import { ConversationService } from '../src/conversation/conversation.service';
@@ -12,6 +13,7 @@ import { DataSource } from 'typeorm';
 import { OrderStatus } from '../src/common/enums/order-status.enum';
 import { PaymentStatus } from '../src/common/enums/payment-status.enum';
 import * as crypto from 'crypto';
+import { WhatsappService } from '../src/whatsapp/whatsapp.service';
 
 /**
  * GasBot Complete End-to-End Integration Test Suite
@@ -61,9 +63,20 @@ describe('GasBot Full Customer-to-Cash Lifecycle (E2E)', () => {
         port: 0,
         isProduction: false,
       } as Partial<ConfigLoader>)
+      .overrideProvider(WhatsappService)
+      .useValue({
+        sendText: jest.fn().mockResolvedValue(undefined),
+        sendInteractiveButtons: jest.fn().mockResolvedValue(undefined),
+        sendInteractiveList: jest.fn().mockResolvedValue(undefined),
+        sendLocationRequest: jest.fn().mockResolvedValue(undefined),
+      })
       .compile();
 
     app = moduleFixture.createNestApplication();
+    app.use(
+      '/webhook/whatsapp',
+      express.raw({ type: 'application/json', limit: '1mb' }),
+    );
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
 
@@ -118,7 +131,7 @@ describe('GasBot Full Customer-to-Cash Lifecycle (E2E)', () => {
       .post('/webhook/whatsapp')
       .set('x-hub-signature-256', signature)
       .set('Content-Type', 'application/json')
-      .send(rawBody);
+      .send(rawBody.toString('utf8'));
 
     expect(webhookResponse.status).toBe(200);
     expect(webhookResponse.text).toContain('EVENT_RECEIVED');

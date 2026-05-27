@@ -3,8 +3,8 @@
  */
 export interface StartCascadeJob {
   orderId: string;
-  initialRadiusMeters: number;   // e.g. 5000
-  maxRadiusMeters: number;       // e.g. 10000
+  initialRadiusMeters: number; // e.g. 5000
+  maxRadiusMeters: number; // e.g. 10000
 }
 
 export interface TimeoutCascadeJob {

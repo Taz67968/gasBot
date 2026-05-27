@@ -40,7 +40,10 @@ export class MatchingResponseListener {
     }
   }
 
-  private async handleAccept(agentPhone: string, orderId: string): Promise<void> {
+  private async handleAccept(
+    agentPhone: string,
+    orderId: string,
+  ): Promise<void> {
     // We need the agent id from the phone
     const [agentRow] = await this.dataSource.query(
       `SELECT id FROM agents WHERE phone = $1`,
@@ -48,7 +51,9 @@ export class MatchingResponseListener {
     );
 
     if (!agentRow) {
-      this.logger.warn(`Accept received from unknown agent phone ${agentPhone}`);
+      this.logger.warn(
+        `Accept received from unknown agent phone ${agentPhone}`,
+      );
       return;
     }
 
@@ -67,11 +72,17 @@ export class MatchingResponseListener {
 
       if (!lockedOrder) {
         await queryRunner.rollbackTransaction();
-        await this.whatsappService.sendText(agentPhone, 'This order no longer exists.');
+        await this.whatsappService.sendText(
+          agentPhone,
+          'This order no longer exists.',
+        );
         return;
       }
 
-      if (lockedOrder.status !== OrderStatus.CASH_ACKNOWLEDGED || lockedOrder.agent_id !== null) {
+      if (
+        lockedOrder.status !== OrderStatus.CASH_ACKNOWLEDGED ||
+        lockedOrder.agent_id !== null
+      ) {
         await queryRunner.rollbackTransaction();
         await this.whatsappService.sendText(
           agentPhone,
@@ -115,7 +126,9 @@ export class MatchingResponseListener {
       // TODO: Notify customer that a driver has been assigned (via WhatsApp)
     } catch (error: any) {
       await queryRunner.rollbackTransaction();
-      this.logger.error(`Failed to claim order ${orderId} for agent ${agentId}: ${error.message}`);
+      this.logger.error(
+        `Failed to claim order ${orderId} for agent ${agentId}: ${error.message}`,
+      );
 
       await this.whatsappService.sendText(
         agentPhone,
@@ -126,7 +139,10 @@ export class MatchingResponseListener {
     }
   }
 
-  private async handleDecline(agentPhone: string, orderId: string): Promise<void> {
+  private async handleDecline(
+    agentPhone: string,
+    orderId: string,
+  ): Promise<void> {
     const [agentRow] = await this.dataSource.query(
       `SELECT id FROM agents WHERE phone = $1`,
       [agentPhone],
@@ -144,6 +160,9 @@ export class MatchingResponseListener {
     // We can publish an internal event or directly call MatchingProcessor logic.
     // For simplicity in this implementation we let the timeout job also pick it up,
     // but in production you would inject MatchingService and call advanceToNextAgent.
-    await this.whatsappService.sendText(agentPhone, 'Thank you. The request has been passed to the next driver.');
+    await this.whatsappService.sendText(
+      agentPhone,
+      'Thank you. The request has been passed to the next driver.',
+    );
   }
 }

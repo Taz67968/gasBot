@@ -8,8 +8,8 @@ import { ConversationState } from './enums/conversation-state.enum';
  */
 export interface ConversationSession {
   state: ConversationState;
-  language: string;           // 'en' | 'fr' | etc.
-  data: Record<string, any>;  // Flexible payload: selectedProduct, location, etc.
+  language: string; // 'en' | 'fr' | etc.
+  data: Record<string, any>; // Flexible payload: selectedProduct, location, etc.
   lastUpdated: string;
 }
 
@@ -32,7 +32,9 @@ export class ConversationService implements OnModuleDestroy {
     });
 
     this.redis.on('error', (err) => {
-      this.logger.error(`Redis connection error in ConversationService: ${err.message}`);
+      this.logger.error(
+        `Redis connection error in ConversationService: ${err.message}`,
+      );
     });
 
     this.redis.on('connect', () => {
@@ -93,7 +95,9 @@ export class ConversationService implements OnModuleDestroy {
     };
 
     await this.redis.setex(key, this.TTL_SECONDS, JSON.stringify(updated));
-    this.logger.debug(`Conversation state updated for ${phoneNumber} → ${state}`);
+    this.logger.debug(
+      `Conversation state updated for ${phoneNumber} → ${state}`,
+    );
 
     return updated;
   }
@@ -101,7 +105,10 @@ export class ConversationService implements OnModuleDestroy {
   /**
    * Updates only the language preference (used during LANGUAGE_SELECT).
    */
-  async setLanguage(phoneNumber: string, language: string): Promise<ConversationSession> {
+  async setLanguage(
+    phoneNumber: string,
+    language: string,
+  ): Promise<ConversationSession> {
     const key = this.getKey(phoneNumber);
     const current = await this.getSession(phoneNumber);
 

@@ -20,7 +20,10 @@ export class CustomerService {
    * Atomically finds or creates a customer using INSERT ... ON CONFLICT DO NOTHING.
    * This eliminates duplicate key race conditions under high concurrency (e.g. multiple messages at once).
    */
-  async findOrCreate(phoneNumber: string, defaultLanguage = 'en'): Promise<Customer> {
+  async findOrCreate(
+    phoneNumber: string,
+    defaultLanguage = 'en',
+  ): Promise<Customer> {
     const query = `
       INSERT INTO customers (phone, language, created_at, updated_at)
       VALUES ($1, $2, NOW(), NOW())
@@ -38,7 +41,9 @@ export class CustomerService {
 
     if (!customer) {
       // Extremely rare fallback
-      this.logger.warn(`Race condition fallback triggered for phone ${phoneNumber}`);
+      this.logger.warn(
+        `Race condition fallback triggered for phone ${phoneNumber}`,
+      );
       return this.findOrCreate(phoneNumber, defaultLanguage);
     }
 

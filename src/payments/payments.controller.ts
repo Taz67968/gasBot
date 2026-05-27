@@ -37,7 +37,9 @@ export class PaymentsController {
     @Body() dto: AgentConfirmPaymentDto,
     @CurrentUser('sub') agentId: string, // JWT subject = agent id
   ) {
-    this.logger.log(`Agent ${agentId} confirming cash for order ${dto.orderId}`);
+    this.logger.log(
+      `Agent ${agentId} confirming cash for order ${dto.orderId}`,
+    );
 
     return this.paymentsService.confirmCashCollectionByAgent(
       dto.orderId,

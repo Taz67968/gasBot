@@ -6,9 +6,9 @@ import { WhatsappService } from '@/whatsapp/whatsapp.service';
  */
 export interface DispatchPayload {
   orderReference: string;
-  gasType: string;           // e.g. "12kg Standard Cylinder"
+  gasType: string; // e.g. "12kg Standard Cylinder"
   sizeKg: number;
-  amountXaf: number;         // Cash to collect on delivery
+  amountXaf: number; // Cash to collect on delivery
   estimatedDistanceMeters?: number;
   customerArea?: string;
 }
@@ -61,14 +61,10 @@ export class DispatchService {
       .join('\n');
 
     try {
-      await this.whatsappService.sendInteractiveButtons(
-        agentPhone,
-        bodyText,
-        [
-          { id: `accept_${orderId}`, title: 'Accept' },
-          { id: `decline_${orderId}`, title: 'Decline' },
-        ],
-      );
+      await this.whatsappService.sendInteractiveButtons(agentPhone, bodyText, [
+        { id: `accept_${orderId}`, title: 'Accept' },
+        { id: `decline_${orderId}`, title: 'Decline' },
+      ]);
 
       this.logger.log(
         `Rich dispatch offer sent to ${agentPhone} for order ${orderReference}`,
@@ -94,7 +90,9 @@ export class DispatchService {
     // Extract lat/lng from PostGIS WKT format "POINT(lng lat)"
     const match = deliveryLocationWkt.match(/POINT\(([^ ]+) ([^)]+)\)/);
     if (!match) {
-      this.logger.warn(`Invalid WKT for order ${orderReference} — sending text only`);
+      this.logger.warn(
+        `Invalid WKT for order ${orderReference} — sending text only`,
+      );
       await this.whatsappService.sendText(
         agentPhone,
         `✅ Assignment *${orderReference}* accepted.\nCash to collect: ${amountXaf} XAF`,
@@ -121,9 +119,13 @@ export class DispatchService {
 
     try {
       await this.whatsappService.sendText(agentPhone, message);
-      this.logger.log(`Map link sent to ${agentPhone} for accepted order ${orderReference}`);
+      this.logger.log(
+        `Map link sent to ${agentPhone} for accepted order ${orderReference}`,
+      );
     } catch (error: any) {
-      this.logger.error(`Failed to send map link to ${agentPhone}: ${error.message}`);
+      this.logger.error(
+        `Failed to send map link to ${agentPhone}: ${error.message}`,
+      );
     }
   }
 }

@@ -1,4 +1,9 @@
-import { Processor, WorkerHost, OnWorkerEvent, InjectQueue } from '@nestjs/bullmq';
+import {
+  Processor,
+  WorkerHost,
+  OnWorkerEvent,
+  InjectQueue,
+} from '@nestjs/bullmq';
 import { Job, Queue } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
@@ -8,7 +13,10 @@ import { GeoService } from '@/geo/geo.service';
 import { ConfigLoader } from '@/config/configuration';
 import { OrderStatus } from '@/common/enums/order-status.enum';
 import { DispatchService } from '@/dispatch/dispatch.service';
-import { StartCascadeJob, TimeoutCascadeJob } from './interfaces/matching-job.interface';
+import {
+  StartCascadeJob,
+  TimeoutCascadeJob,
+} from './interfaces/matching-job.interface';
 
 const CASCADE_TTL = 30 * 60; // 30 minutes max cascade lifetime
 
@@ -30,7 +38,9 @@ export class MatchingProcessor extends WorkerHost {
     this.redis = new Redis(config.redisUrl);
   }
 
-  async process(job: Job<StartCascadeJob | TimeoutCascadeJob, any, string>): Promise<any> {
+  async process(
+    job: Job<StartCascadeJob | TimeoutCascadeJob, any, string>,
+  ): Promise<any> {
     if (job.name === 'START_CASCADE') {
       return this.handleStartCascade(job.data as StartCascadeJob);
     }
@@ -67,11 +77,19 @@ export class MatchingProcessor extends WorkerHost {
     const lat = parseFloat(match[2]);
 
     // First attempt: 5km
-    let candidates = await this.geoService.findNearestAgents(lat, lng, initialRadiusMeters);
+    let candidates = await this.geoService.findNearestAgents(
+      lat,
+      lng,
+      initialRadiusMeters,
+    );
 
     // Second attempt: 10km if needed
     if (candidates.length === 0) {
-      candidates = await this.geoService.findNearestAgents(lat, lng, maxRadiusMeters);
+      candidates = await this.geoService.findNearestAgents(
+        lat,
+        lng,
+        maxRadiusMeters,
+      );
     }
 
     if (candidates.length === 0) {
@@ -81,7 +99,7 @@ export class MatchingProcessor extends WorkerHost {
 
     // Store candidate list + current index in Redis for the cascade
     const cascadeKey = `matching:cascade:${orderId}`;
-    const agentIds = candidates.map(c => c.agent.id);
+    const agentIds = candidates.map((c) => c.agent.id);
 
     await this.redis.setex(
       cascadeKey,
@@ -94,7 +112,11 @@ export class MatchingProcessor extends WorkerHost {
   }
 
   // === OFFER TO SINGLE AGENT ===
-  private async offerToAgent(orderId: string, agentId: string, attemptIndex: number): Promise<void> {
+  private async offerToAgent(
+    orderId: string,
+    agentId: string,
+    attemptIndex: number,
+  ): Promise<void> {
     // Fetch agent phone
     const [agentRow] = await this.dataSource.query(
       `SELECT phone, full_name FROM agents WHERE id = $1`,
@@ -121,7 +143,9 @@ export class MatchingProcessor extends WorkerHost {
       orderId,
     );
 
-    this.logger.log(`Rich dispatch offer sent to agent ${agentId} for order ${orderId}`);
+    this.logger.log(
+      `Rich dispatch offer sent to agent ${agentId} for order ${orderId}`,
+    );
 
     // Schedule 90-second timeout job
     const timeoutData: TimeoutCascadeJob = {
@@ -148,18 +172,27 @@ export class MatchingProcessor extends WorkerHost {
       [orderId],
     );
 
-    if (!orderRow || orderRow.status !== OrderStatus.AGENT_ASSIGNED || orderRow.agent_id !== agentId) {
+    if (
+      !orderRow ||
+      orderRow.status !== OrderStatus.AGENT_ASSIGNED ||
+      orderRow.agent_id !== agentId
+    ) {
       // Already moved on or accepted by someone else
       return;
     }
 
-    this.logger.warn(`90s timeout reached for agent ${agentId} on order ${orderId}`);
+    this.logger.warn(
+      `90s timeout reached for agent ${agentId} on order ${orderId}`,
+    );
 
     await this.advanceToNextAgent(orderId, attemptIndex);
   }
 
   // === ADVANCE TO NEXT AGENT IN CASCADE ===
-  private async advanceToNextAgent(orderId: string, _currentAttemptIndex: number): Promise<void> {
+  private async advanceToNextAgent(
+    orderId: string,
+    _currentAttemptIndex: number,
+  ): Promise<void> {
     const cascadeKey = `matching:cascade:${orderId}`;
     const raw = await this.redis.get(cascadeKey);
 
@@ -196,7 +229,9 @@ export class MatchingProcessor extends WorkerHost {
       [OrderStatus.WAITING_FOR_AGENT, orderId],
     );
 
-    this.logger.log(`Order ${orderId} moved to WAITING_FOR_AGENT (no drivers found)`);
+    this.logger.log(
+      `Order ${orderId} moved to WAITING_FOR_AGENT (no drivers found)`,
+    );
 
     // TODO: notify customer that we are looking for a driver
   }

@@ -5,6 +5,7 @@ import { join } from 'path';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 
 import { validateEnv } from '@/config/env.validation';
+import { ConfigurationModule } from '@/config/config.module';
 import { ConfigLoader } from '@/config/configuration';
 
 import { AuthModule } from '@/auth/auth.module';
@@ -47,6 +48,7 @@ import { AppService } from './app.service';
     // Enterprise TypeORM connection with strict production settings
     // Uses validated DB config, explicit entities, and migration-based schema management
     TypeOrmModule.forRootAsync({
+      imports: [ConfigurationModule],
       inject: [ConfigLoader],
       useFactory: (config: ConfigLoader) => ({
         type: 'postgres',
@@ -57,8 +59,8 @@ import { AppService } from './app.service';
         database: config.dbName,
         entities: [Customer, Zone, Agent, Order, Payment],
         migrations: [join(__dirname, '../database/migrations/*{.ts,.js}')],
-        migrationsRun: false, // Explicit control via migration scripts (never auto in prod)
-        synchronize: false, // CRITICAL: always false in production - use migrations only
+        migrationsRun: config.nodeEnv === 'test', // run migrations in test environment
+        synchronize: config.nodeEnv === 'test', // auto-sync schema for testing
         logging: config.nodeEnv !== 'production',
         ssl:
           config.nodeEnv === 'production'
@@ -84,6 +86,7 @@ import { AppService } from './app.service';
 
     // BullMQ connection (shared Redis instance used by matching queue)
     BullModule.forRootAsync({
+      imports: [ConfigurationModule],
       inject: [ConfigLoader],
       useFactory: (config: ConfigLoader) => ({
         connection: {
@@ -111,8 +114,6 @@ import { AppService } from './app.service';
   controllers: [AppController],
   providers: [
     AppService,
-    // The structural loader class - injectable typed facade over ConfigService
-    ConfigLoader,
     // Global role guard (used via @UseGuards(RolesGuard) + @Roles() on controllers/routes)
     RolesGuard,
   ],

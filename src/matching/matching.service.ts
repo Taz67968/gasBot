@@ -35,16 +35,23 @@ export class MatchingService {
       [orderId],
     );
 
-    if (!orderRows.length || orderRows[0].status !== OrderStatus.CASH_ACKNOWLEDGED) {
-      this.logger.warn(`Cannot start cascade for order ${orderId} - invalid state`);
+    if (
+      !orderRows.length ||
+      orderRows[0].status !== OrderStatus.CASH_ACKNOWLEDGED
+    ) {
+      this.logger.warn(
+        `Cannot start cascade for order ${orderId} - invalid state`,
+      );
       return;
     }
 
     // Parse PostGIS geography point to get lat/lng (stored as WKT or binary, we use ST_AsText)
-    const pointText: string = await this.dataSource.query(
-      `SELECT ST_AsText(delivery_location) as point FROM orders WHERE id = $1`,
-      [orderId],
-    ).then(r => r[0]?.point);
+    const pointText: string = await this.dataSource
+      .query(
+        `SELECT ST_AsText(delivery_location) as point FROM orders WHERE id = $1`,
+        [orderId],
+      )
+      .then((r) => r[0]?.point);
 
     if (!pointText) {
       this.logger.error(`Order ${orderId} has no delivery location`);
@@ -75,6 +82,8 @@ export class MatchingService {
       backoff: { type: 'exponential', delay: 2000 },
     });
 
-    this.logger.log(`Started driver matching cascade for order ${orderId} at (${lat}, ${lng})`);
+    this.logger.log(
+      `Started driver matching cascade for order ${orderId} at (${lat}, ${lng})`,
+    );
   }
 }
