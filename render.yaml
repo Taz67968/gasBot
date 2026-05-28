@@ -26,6 +26,8 @@ services:
         fromSecret: WHATSAPP_API_TOKEN
       - key: WHATSAPP_VERIFY_TOKEN
         fromSecret: WHATSAPP_VERIFY_TOKEN
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        fromSecret: WHATSAPP_PHONE_NUMBER_ID
       - key: OPENAI_API_KEY
         fromSecret: OPENAI_API_KEY
     healthCheckPath: /
