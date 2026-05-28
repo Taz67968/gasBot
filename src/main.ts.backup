@@ -37,9 +37,7 @@ async function bootstrap() {
   );
 
   const port = config.port;
-console.log(`[DEBUG] About to listen on port ${port}`);
   await app.listen(port);
-console.log(`[DEBUG] Listening on port ${port}`);
 
   console.log(`✅  GasBot API is listening on http://localhost:${port}\n`);
 }
