@@ -1,0 +1,15 @@
+require('dotenv').config();
+console.log('=== Environment Variables ===');
+console.log('DB_HOST:', process.env.DB_HOST);
+console.log('DB_PORT:', process.env.DB_PORT);
+console.log('DB_USERNAME:', process.env.DB_USERNAME);
+console.log('DB_NAME:', process.env.DB_NAME);
+console.log('REDIS_URL:', process.env.REDIS_URL);
+console.log('JWT_SECRET:', process.env.JWT_SECRET ? 'SET' : 'NOT SET');
+console.log('WHATSAPP_API_TOKEN:', process.env.WHATSAPP_API_TOKEN ? 'SET' : 'NOT SET');
+console.log('WHATSAPP_VERIFY_TOKEN:', process.env.WHATSAPP_VERIFY_TOKEN ? 'SET' : 'NOT SET');
+console.log('WHATSAPP_PHONE_NUMBER_ID:', process.env.WHATSAPP_PHONE_NUMBER_ID ? 'SET' : 'NOT SET');
+console.log('OPENAI_API_KEY:', process.env.OPENAI_API_KEY ? 'SET' : 'NOT SET');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('PORT:', process.env.PORT);
+console.log('=============================');
