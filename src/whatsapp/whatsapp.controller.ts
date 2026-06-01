@@ -222,7 +222,7 @@ export class WhatsappController {
     } catch (err: any) {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       this.logger.error(`Error processing webhook: ${err.message}`);
-      // Still return 200 to avoid Meta retry storms
+      // Still return 200 to avoid Meta retry storm
       res.status(HttpStatus.OK).send('EVENT_RECEIVED');
     }
   }
