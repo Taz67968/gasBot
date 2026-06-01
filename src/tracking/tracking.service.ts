@@ -2,12 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
-import Redis from 'ioredis';
 import { ConfigLoader } from '@/config/configuration';
+import { RedisService } from '@/redis/redis.service';
 
-/**
- * Interface for incoming location update payload.
- */
 export interface AgentLocationUpdate {
   latitude: number;
   longitude: number;
@@ -15,15 +12,9 @@ export interface AgentLocationUpdate {
   timestamp?: string;
 }
 
-/**
- * TrackingService
- * High-frequency geographic tracking infrastructure powered by Redis GeoSets
- * with intelligent write suppression to protect PostgreSQL.
- */
 @Injectable()
 export class TrackingService {
   private readonly logger = new Logger(TrackingService.name);
-  private readonly redis: Redis;
   private readonly GEO_KEY = 'geo:agents:live';
   private readonly LAST_POS_PREFIX = 'agent:lastpos:';
   private readonly MOVEMENT_THRESHOLD_METERS = 10;
@@ -33,16 +24,15 @@ export class TrackingService {
     private readonly dataSource: DataSource,
     private readonly jwtService: JwtService,
     private readonly config: ConfigLoader,
+    private readonly redisService: RedisService,
   ) {
-    this.redis = new Redis(this.config.redisUrl, {
-      maxRetriesPerRequest: 3,
-      enableReadyCheck: true,
-      tls: this.config.redisUrl.startsWith('rediss://') ? {} : undefined,
-    });
-
-    this.redis.on('error', (err) => {
+    this.redisService.getClient().on('error', (err) => {
       this.logger.error(`Redis error in TrackingService: ${err.message}`);
     });
+  }
+
+  private getRedis() {
+    return this.redisService.getClient();
   }
 
   /**
@@ -59,7 +49,7 @@ export class TrackingService {
     const lastPosKey = `${this.LAST_POS_PREFIX}${agentId}`;
 
     // 1. Read last cached position from Redis (high-speed)
-    const lastPos = await this.redis.hgetall(lastPosKey);
+    const lastPos = await this.getRedis().hgetall(lastPosKey);
 
     let distanceMoved: number | null = null;
     let shouldWriteToDb = true;
@@ -84,7 +74,7 @@ export class TrackingService {
     }
 
     // 2. Always update Redis for high-frequency access (GeoSet + last position cache)
-    const pipeline = this.redis.pipeline();
+    const pipeline = this.getRedis().pipeline();
 
     // Update GeoSet (for GEOSEARCH / GEORADIUS queries)
     pipeline.geoadd(this.GEO_KEY, lng, lat, agentId);
@@ -184,7 +174,7 @@ export class TrackingService {
   async getLiveAgentPosition(
     agentId: string,
   ): Promise<{ lat: number; lng: number } | null> {
-    const result = await this.redis.geopos(this.GEO_KEY, agentId);
+    const result = await this.getRedis().geopos(this.GEO_KEY, agentId);
     if (!result || !result[0]) return null;
 
     const [lng, lat] = result[0];

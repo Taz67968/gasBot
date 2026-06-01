@@ -25,6 +25,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { GeoModule } from '@/geo/geo.module';
 import { MatchingModule } from '@/matching/matching.module';
 import { PaymentsModule } from '@/payments/payments.module';
+import { RedisModule } from '@/redis/redis.module';
 import { DispatchModule } from '@/dispatch/dispatch.module';
 import { TrackingModule } from '@/tracking/tracking.module';
 
@@ -115,6 +116,9 @@ import { AppService } from './app.service';
 
     // Payments & Settlements (Cash on Delivery / Pay by Hand)
     PaymentsModule,
+
+    // Global Redis singleton for services (Conversation, Tracking, Auth, Matching)
+    RedisModule,
 
     // Driver dispatch communications + high-frequency Redis geospatial tracking
     DispatchModule,

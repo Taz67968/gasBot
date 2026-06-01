@@ -4,6 +4,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import * as express from 'express';
 import { AppModule } from './app.module';
 import { ConfigLoader } from '@/config/configuration';
+import { RedisService } from '@/redis/redis.service';
 import { Logger } from '@nestjs/common';
 
 async function bootstrap() {
@@ -80,6 +81,17 @@ async function bootstrap() {
 
   // Retrieve the validated configuration loader (guaranteed non-null after ConfigModule)
   const config = app.get(ConfigLoader);
+  const redisService = app.get(RedisService);
+
+  try {
+    await redisService.connect();
+  } catch (connectError: any) {
+    console.error('Failed to connect to Redis at startup:', connectError.message);
+    if (connectError.stack) {
+      console.error('Stack:', connectError.stack);
+    }
+    process.exit(1);
+  }
 
   // Enterprise startup banner with safe (redacted) configuration snapshot
   console.log('\n');

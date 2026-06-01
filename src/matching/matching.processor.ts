@@ -8,11 +8,10 @@ import { Job, Queue } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import Redis from 'ioredis';
 import { GeoService } from '@/geo/geo.service';
-import { ConfigLoader } from '@/config/configuration';
 import { OrderStatus } from '@/common/enums/order-status.enum';
 import { DispatchService } from '@/dispatch/dispatch.service';
+import { RedisService } from '@/redis/redis.service';
 import {
   StartCascadeJob,
   TimeoutCascadeJob,
@@ -24,20 +23,20 @@ const CASCADE_TTL = 30 * 60; // 30 minutes max cascade lifetime
 @Injectable()
 export class MatchingProcessor extends WorkerHost {
   private readonly logger = new Logger(MatchingProcessor.name);
-  private readonly redis: Redis;
 
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly geoService: GeoService,
     private readonly dispatchService: DispatchService,
-    config: ConfigLoader,
     @InjectQueue('driver-matching')
     private readonly matchingQueue: Queue,
+    private readonly redisService: RedisService,
   ) {
     super();
-    this.redis = new Redis(config.redisUrl, {
-      tls: config.redisUrl.startsWith('rediss://') ? {} : undefined,
-    });
+  }
+
+  private getRedis() {
+    return this.redisService.getClient();
   }
 
   async process(
@@ -103,7 +102,7 @@ export class MatchingProcessor extends WorkerHost {
     const cascadeKey = `matching:cascade:${orderId}`;
     const agentIds = candidates.map((c) => c.agent.id);
 
-    await this.redis.setex(
+    await this.getRedis().setex(
       cascadeKey,
       CASCADE_TTL,
       JSON.stringify({ agentIds, currentIndex: 0 }),
@@ -196,7 +195,7 @@ export class MatchingProcessor extends WorkerHost {
     _currentAttemptIndex: number,
   ): Promise<void> {
     const cascadeKey = `matching:cascade:${orderId}`;
-    const raw = await this.redis.get(cascadeKey);
+    const raw = await this.getRedis().get(cascadeKey);
 
     if (!raw) {
       await this.markWaitingForAgent(orderId);
@@ -208,13 +207,13 @@ export class MatchingProcessor extends WorkerHost {
     const nextIndex = currentIndex + 1;
 
     if (nextIndex >= agentIds.length) {
-      await this.redis.del(cascadeKey);
+      await this.getRedis().del(cascadeKey);
       await this.markWaitingForAgent(orderId);
       return;
     }
 
     // Update index in Redis
-    await this.redis.setex(
+    await this.getRedis().setex(
       cascadeKey,
       CASCADE_TTL,
       JSON.stringify({ agentIds, currentIndex: nextIndex }),
