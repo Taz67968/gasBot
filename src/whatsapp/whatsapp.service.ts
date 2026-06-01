@@ -2,6 +2,20 @@ import { Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosInstance } from 'axios';
 import { ConfigLoader } from '@/config/configuration';
 
+function formatE164(raw: string, logger: Logger): string {
+  const digits = raw.replace(/[^0-9]/g, '');
+  if (!digits) {
+    throw new Error(`Invalid phone number: ${raw}`);
+  }
+  if (digits.startsWith('0')) {
+    logger.warn(
+      `Phone number ${raw} looks local; dropping leading 0 for E.164`,
+    );
+    return digits.slice(1);
+  }
+  return digits;
+}
+
 /**
  * WhatsappService
  * High-level wrapper around WhatsApp Cloud API (Graph API) for outbound messaging.
@@ -19,8 +33,8 @@ export class WhatsappService {
     this.phoneNumberId = config.whatsappPhoneNumberId;
 
     this.http = axios.create({
-      baseURL: 'https://graph.facebook.com/v18.0',
-      timeout: 10000,
+      baseURL: 'https://graph.facebook.com/v21.0',
+      timeout: 15000,
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         'Content-Type': 'application/json',
@@ -32,17 +46,18 @@ export class WhatsappService {
    * Send a simple text message.
    */
   async sendText(to: string, text: string): Promise<void> {
+    const formattedTo = formatE164(to, this.logger);
     try {
       await this.http.post(`/${this.phoneNumberId}/messages`, {
         messaging_product: 'whatsapp',
-        to,
+        to: formattedTo,
         type: 'text',
         text: { body: text },
       });
-      this.logger.log(`Text sent to ${to}`);
+      this.logger.log(`Text sent to ${formattedTo}`);
     } catch (error: any) {
       this.logger.error(
-        `Failed to send buttons to ${to}: ${error.response?.data?.error?.message || error.message}`,
+        `Failed to send text to ${formattedTo}: ${error.response?.data?.error?.message || error.message}`,
       );
       throw error;
     }
@@ -60,6 +75,7 @@ export class WhatsappService {
       throw new Error('WhatsApp interactive buttons support maximum 3 options');
     }
 
+    const formattedTo = formatE164(to, this.logger);
     const interactive = {
       type: 'button',
       body: { text: body },
@@ -74,14 +90,14 @@ export class WhatsappService {
     try {
       await this.http.post(`/${this.phoneNumberId}/messages`, {
         messaging_product: 'whatsapp',
-        to,
+        to: formattedTo,
         type: 'interactive',
         interactive,
       });
-      this.logger.log(`Interactive buttons sent to ${to}`);
+      this.logger.log(`Interactive buttons sent to ${formattedTo}`);
     } catch (error: any) {
       this.logger.error(
-        `Failed to send buttons to ${to}: ${error.response?.data?.error?.message || error.message}`,
+        `Failed to send buttons to ${formattedTo}: ${error.response?.data?.error?.message || error.message}`,
       );
       throw error;
     }
@@ -99,6 +115,7 @@ export class WhatsappService {
       rows: Array<{ id: string; title: string; description?: string }>;
     }>,
   ): Promise<void> {
+    const formattedTo = formatE164(to, this.logger);
     const interactive = {
       type: 'list',
       body: { text: body },
@@ -111,14 +128,14 @@ export class WhatsappService {
     try {
       await this.http.post(`/${this.phoneNumberId}/messages`, {
         messaging_product: 'whatsapp',
-        to,
+        to: formattedTo,
         type: 'interactive',
         interactive,
       });
-      this.logger.log(`Interactive list sent to ${to}`);
+      this.logger.log(`Interactive list sent to ${formattedTo}`);
     } catch (error: any) {
       this.logger.error(
-        `Failed to send list to ${to}: ${error.response?.data?.error?.message || error.message}`,
+        `Failed to send list to ${formattedTo}: ${error.response?.data?.error?.message || error.message}`,
       );
       throw error;
     }
@@ -129,6 +146,7 @@ export class WhatsappService {
    * WhatsApp supports this via interactive message with type "location_request".
    */
   async sendLocationRequest(to: string, body: string): Promise<void> {
+    const formattedTo = formatE164(to, this.logger);
     const interactive = {
       type: 'location_request_message',
       body: { text: body },
@@ -140,14 +158,14 @@ export class WhatsappService {
     try {
       await this.http.post(`/${this.phoneNumberId}/messages`, {
         messaging_product: 'whatsapp',
-        to,
+        to: formattedTo,
         type: 'interactive',
         interactive,
       });
-      this.logger.log(`Location request sent to ${to}`);
+      this.logger.log(`Location request sent to ${formattedTo}`);
     } catch (error: any) {
       this.logger.error(
-        `Failed to send location request to ${to}: ${error.response?.data?.error?.message || error.message}`,
+        `Failed to send location request to ${formattedTo}: ${error.response?.data?.error?.message || error.message}`,
       );
       throw error;
     }

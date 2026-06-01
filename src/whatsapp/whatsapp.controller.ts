@@ -10,6 +10,13 @@ import {
   Query,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+
+interface WhatsappRequest extends Request {
+  requestId?: string;
+  rawBody?: Buffer;
+  body?: Buffer;
+}
+
 import * as crypto from 'crypto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ConfigLoader } from '@/config/configuration';
@@ -66,16 +73,18 @@ export class WhatsappController {
   @Post()
   @HttpCode(HttpStatus.OK)
   // eslint-disable-next-line @typescript-eslint/require-await
-   async handleIncomingMessage(
-    @Req() req: Request & { rawBody?: Buffer },
+  async handleIncomingMessage(
+    @Req() req: WhatsappRequest,
     @Res() res: Response,
   ): Promise<void> {
-    const requestId = (req as any).requestId || 'unknown';
+    const requestId = req.requestId || 'unknown';
     const signature = req.headers['x-hub-signature-256'] as string | undefined;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-    const rawBody: Buffer = (req as any).body; // Buffer because of raw parser
+    // raw body populated by express.raw middleware
+    const rawBody: Buffer | undefined = req.body as unknown as Buffer;
 
-    this.logger.log(`[${requestId}] Incoming WhatsApp webhook POST request received`);
+    this.logger.log(
+      `[${requestId}] Incoming WhatsApp webhook POST request received`,
+    );
 
     if (!rawBody || !Buffer.isBuffer(rawBody)) {
       this.logger.error(
@@ -98,10 +107,20 @@ export class WhatsappController {
       'sha256=' +
       crypto.createHmac('sha256', this.appSecret).update(rawBody).digest('hex');
 
-    const isValid = crypto.timingSafeEqual(
-      Buffer.from(signature),
-      Buffer.from(expectedSignature),
-    );
+    const normalizedReceived = signature.toLowerCase();
+    const normalizedExpected = expectedSignature.toLowerCase();
+
+    let isValid = false;
+    if (normalizedReceived.length === normalizedExpected.length) {
+      try {
+        isValid = crypto.timingSafeEqual(
+          Buffer.from(normalizedReceived),
+          Buffer.from(normalizedExpected),
+        );
+      } catch {
+        isValid = false;
+      }
+    }
 
     if (!isValid) {
       this.logger.warn(
