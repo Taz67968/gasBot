@@ -4,6 +4,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import * as express from 'express';
 import { AppModule } from './app.module';
 import { ConfigLoader } from '@/config/configuration';
+import { Logger } from '@nestjs/common';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -15,6 +16,67 @@ async function bootstrap() {
     '/webhook/whatsapp',
     express.raw({ type: 'application/json', limit: '1mb' }),
   );
+
+  // === Request Logging Middleware ===
+  const logger = new Logger('HTTP');
+
+  app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const startTime = Date.now();
+    const requestId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    // Store requestId and startTime for later use
+    (req as any)['requestId'] = requestId;
+
+    logger.log(`[${requestId}] ${req.method} ${req.url} - START`);
+
+    // Override res.send to log the response
+    const originalSend = res.send.bind(res);
+    res.send = (body: any) => {
+      const duration = Date.now() - startTime;
+      const status = res.statusCode;
+      logger.log(`[${requestId}] ${req.method} ${req.url} - ${status} - ${duration}ms`);
+      return originalSend(body);
+    };
+
+    // Override res.json to log the response
+    const originalJson = res.json.bind(res);
+    res.json = (body: any) => {
+      const duration = Date.now() - startTime;
+      const status = res.statusCode;
+      logger.log(`[${requestId}] ${req.method} ${req.url} - ${status} - ${duration}ms`);
+      return originalJson(body);
+    };
+
+    // Override res.end for cases where neither send nor json is called
+    const originalEnd = res.end.bind(res);
+    res.end = (...chunks: any[]) => {
+      const duration = Date.now() - startTime;
+      const status = res.statusCode;
+      if (!res.writableEnded) {
+        logger.log(`[${requestId}] ${req.method} ${req.url} - ${status} - ${duration}ms`);
+      }
+      return originalEnd(...chunks);
+    };
+
+    next();
+  });
+
+  // === Global Error Handler ===
+  app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    const errorLogger = new Logger('ERROR');
+    const requestId = (req as any)['requestId'] || 'unknown';
+
+    errorLogger.error(`[${requestId}] Error on ${req.method} ${req.url}: ${err.message}`);
+    if (err.stack) {
+      errorLogger.error(`[${requestId}] Stack: ${err.stack}`);
+    }
+
+    res.status(err.status || 500).json({
+      statusCode: err.status || 500,
+      message: err.message || 'Internal server error',
+      requestId,
+    });
+  });
 
   // Retrieve the validated configuration loader (guaranteed non-null after ConfigModule)
   const config = app.get(ConfigLoader);
@@ -37,9 +99,7 @@ async function bootstrap() {
   );
 
   const port = config.port;
-console.log(`[DEBUG] About to listen on port ${port}`);
   await app.listen(port);
-console.log(`[DEBUG] Listening on port ${port}`);
 
   console.log(`✅  GasBot API is listening on http://localhost:${port}\n`);
 }

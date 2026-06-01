@@ -4,6 +4,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Roles } from '@/common/decorators/roles.decorator';
@@ -30,6 +31,7 @@ export interface SettlementSummaryRow {
 @Controller('api/v1/admin/settlements')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 export class SettlementsController {
+  private readonly logger = new Logger(SettlementsController.name);
   constructor(private readonly paymentsService: PaymentsService) {}
 
   /**
@@ -40,6 +42,20 @@ export class SettlementsController {
   @Roles(Role.ADMIN)
   @HttpCode(HttpStatus.OK)
   async getSettlementsSummary(): Promise<SettlementSummaryRow[]> {
-    return this.paymentsService.getAgentSettlementSummary();
+    this.logger.log('Fetching agent settlement summary');
+
+    try {
+      const result = await this.paymentsService.getAgentSettlementSummary();
+
+      this.logger.log(
+        `Settlement summary fetched successfully for ${result.length} agents`,
+      );
+      return result;
+    } catch (err: any) {
+      this.logger.error(
+        `Failed to fetch settlement summary: ${err.message}`,
+      );
+      throw err;
+    }
   }
 }

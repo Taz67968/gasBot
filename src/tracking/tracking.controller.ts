@@ -41,27 +41,39 @@ export class TrackingController {
     @Body() body: AgentLocationUpdate,
     @CurrentUser('sub') currentUserId: string,
   ): Promise<void> {
-    // Optional self-update enforcement (agent can only update their own location)
-    if (currentUserId !== agentId) {
-      this.logger.warn(
-        `Agent ${currentUserId} attempted to update location for different agent ${agentId}`,
+    this.logger.log(
+      `Location update request from agent ${currentUserId} for agent ${agentId}`,
+    );
+
+    try {
+      if (currentUserId !== agentId) {
+        this.logger.warn(
+          `Agent ${currentUserId} attempted to update location for different agent ${agentId}`,
+        );
+      }
+
+      if (!body.latitude || !body.longitude) {
+        this.logger.warn(
+          `Invalid location update for agent ${agentId}: missing coordinates`,
+        );
+        throw new Error('latitude and longitude are required');
+      }
+
+      const result = await this.trackingService.updateAgentLocation(
+        agentId,
+        body.latitude,
+        body.longitude,
+        body.accuracy,
       );
-      // In strict mode you could throw ForbiddenException. For now we allow fleet managers too.
+
+      this.logger.debug(
+        `Location update for agent ${agentId} — DB written: ${result.updatedDb}, moved: ${result.distanceMoved?.toFixed(1) ?? 'N/A'}m`,
+      );
+    } catch (err: any) {
+      this.logger.error(
+        `Failed to update location for agent ${agentId}: ${err.message}`,
+      );
+      throw err;
     }
-
-    if (!body.latitude || !body.longitude) {
-      throw new Error('latitude and longitude are required');
-    }
-
-    const result = await this.trackingService.updateAgentLocation(
-      agentId,
-      body.latitude,
-      body.longitude,
-      body.accuracy,
-    );
-
-    this.logger.debug(
-      `Location update for agent ${agentId} — DB written: ${result.updatedDb}, moved: ${result.distanceMoved?.toFixed(1) ?? 'N/A'}m`,
-    );
   }
 }

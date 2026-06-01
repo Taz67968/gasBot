@@ -66,17 +66,20 @@ export class WhatsappController {
   @Post()
   @HttpCode(HttpStatus.OK)
   // eslint-disable-next-line @typescript-eslint/require-await
-  async handleIncomingMessage(
+   async handleIncomingMessage(
     @Req() req: Request & { rawBody?: Buffer },
     @Res() res: Response,
   ): Promise<void> {
+    const requestId = (req as any).requestId || 'unknown';
     const signature = req.headers['x-hub-signature-256'] as string | undefined;
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
     const rawBody: Buffer = (req as any).body; // Buffer because of raw parser
 
+    this.logger.log(`[${requestId}] Incoming WhatsApp webhook POST request received`);
+
     if (!rawBody || !Buffer.isBuffer(rawBody)) {
       this.logger.error(
-        'No raw body received - check express.raw middleware registration',
+        `[${requestId}] No raw body received - check express.raw middleware registration`,
       );
       res.status(HttpStatus.BAD_REQUEST).send('Invalid body');
       return;
@@ -84,7 +87,9 @@ export class WhatsappController {
 
     // === Signature Verification ===
     if (!signature) {
-      this.logger.warn('Missing X-Hub-Signature-256 header');
+      this.logger.warn(
+        `[${requestId}] Missing X-Hub-Signature-256 header`,
+      );
       res.status(HttpStatus.FORBIDDEN).send('Missing signature');
       return;
     }
