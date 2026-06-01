@@ -90,7 +90,6 @@ async function bootstrap() {
     if (connectError.stack) {
       console.error('Stack:', connectError.stack);
     }
-    process.exit(1);
   }
 
   // Enterprise startup banner with safe (redacted) configuration snapshot
