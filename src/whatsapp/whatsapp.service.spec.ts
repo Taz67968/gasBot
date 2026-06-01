@@ -37,13 +37,13 @@ describe('WhatsappService', () => {
     });
   });
 
-  it('should format local numbers by stripping leading 0', async () => {
+  it('should format local numbers by replacing leading 0 with country code 234', async () => {
     await service.sendText('08012345678', 'hello');
 
     const axiosInstance = (mockedAxios.create as jest.Mock).mock.results[0].value;
     expect(axiosInstance.post).toHaveBeenCalledWith(
       '/phone-number-id/messages',
-      expect.objectContaining({ to: '8012345678' }),
+      expect.objectContaining({ to: '2348012345678' }),
     );
   });
 
@@ -66,7 +66,7 @@ describe('WhatsappService', () => {
     const axiosInstance = (mockedAxios.create as jest.Mock).mock.results[0].value;
     expect(axiosInstance.post).toHaveBeenCalledWith(
       '/phone-number-id/messages',
-      expect.objectContaining({ to: '8012345678' }),
+      expect.objectContaining({ to: '2348012345678' }),
     );
   });
 
@@ -77,7 +77,7 @@ describe('WhatsappService', () => {
     const axiosInstance = (mockedAxios.create as jest.Mock).mock.results[0].value;
     expect(axiosInstance.post).toHaveBeenCalledWith(
       '/phone-number-id/messages',
-      expect.objectContaining({ to: '8012345678' }),
+      expect.objectContaining({ to: '2348012345678' }),
     );
   });
 
@@ -86,7 +86,7 @@ describe('WhatsappService', () => {
     const axiosInstance = (mockedAxios.create as jest.Mock).mock.results[0].value;
     expect(axiosInstance.post).toHaveBeenCalledWith(
       '/phone-number-id/messages',
-      expect.objectContaining({ to: '8012345678' }),
+      expect.objectContaining({ to: '2348012345678' }),
     );
   });
 });

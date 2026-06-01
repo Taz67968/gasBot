@@ -6,18 +6,16 @@ import { CustomerModule } from '@/customer/customer.module';
 import { WhatsappModule } from '@/whatsapp/whatsapp.module';
 import { VisionModule } from '@/vision/vision.module';
 import { MatchingModule } from '@/matching/matching.module';
+import { OrderModule } from '@/order/order.module';
 
-/**
- * ConversationModule
- * Wires the Redis-backed conversational state machine and its central processor.
- */
 @Module({
   imports: [
-    EventEmitterModule.forRoot(), // safe to re-import
+    EventEmitterModule.forRoot(),
     CustomerModule,
     WhatsappModule,
     VisionModule,
     MatchingModule,
+    OrderModule,
   ],
   providers: [ConversationService, ConversationProcessor],
   exports: [ConversationService, ConversationProcessor],

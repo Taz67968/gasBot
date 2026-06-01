@@ -2,16 +2,16 @@ import { Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosInstance } from 'axios';
 import { ConfigLoader } from '@/config/configuration';
 
-function formatE164(raw: string, logger: Logger): string {
-  const digits = raw.replace(/[^0-9]/g, '');
+function formatE164(raw: string): string {
+  let digits = raw.replace(/[^0-9]/g, '');
   if (!digits) {
     throw new Error(`Invalid phone number: ${raw}`);
   }
+  const countryCode = '234';
   if (digits.startsWith('0')) {
-    logger.warn(
-      `Phone number ${raw} looks local; dropping leading 0 for E.164`,
-    );
-    return digits.slice(1);
+    digits = countryCode + digits.slice(1);
+  } else if (!digits.startsWith(countryCode)) {
+    digits = countryCode + digits;
   }
   return digits;
 }
@@ -46,7 +46,7 @@ export class WhatsappService {
    * Send a simple text message.
    */
   async sendText(to: string, text: string): Promise<void> {
-    const formattedTo = formatE164(to, this.logger);
+    const formattedTo = formatE164(to);
     try {
       await this.http.post(`/${this.phoneNumberId}/messages`, {
         messaging_product: 'whatsapp',
@@ -75,7 +75,7 @@ export class WhatsappService {
       throw new Error('WhatsApp interactive buttons support maximum 3 options');
     }
 
-    const formattedTo = formatE164(to, this.logger);
+    const formattedTo = formatE164(to);
     const interactive = {
       type: 'button',
       body: { text: body },
@@ -115,7 +115,7 @@ export class WhatsappService {
       rows: Array<{ id: string; title: string; description?: string }>;
     }>,
   ): Promise<void> {
-    const formattedTo = formatE164(to, this.logger);
+    const formattedTo = formatE164(to);
     const interactive = {
       type: 'list',
       body: { text: body },
@@ -146,7 +146,7 @@ export class WhatsappService {
    * WhatsApp supports this via interactive message with type "location_request".
    */
   async sendLocationRequest(to: string, body: string): Promise<void> {
-    const formattedTo = formatE164(to, this.logger);
+    const formattedTo = formatE164(to);
     const interactive = {
       type: 'location_request_message',
       body: { text: body },

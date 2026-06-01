@@ -10,6 +10,7 @@ import { WhatsappService } from '@/whatsapp/whatsapp.service';
 import { VisionService, GasCylinderAnalysis } from '@/vision/vision.service';
 import { MessageReceivedEvent } from '@/whatsapp/events/message-received.event';
 import { MatchingService } from '@/matching/matching.service';
+import { OrderService } from '@/order/order.service';
 
 /**
  * ConversationProcessor
@@ -73,6 +74,7 @@ export class ConversationProcessor {
     private readonly whatsappService: WhatsappService,
     private readonly visionService: VisionService,
     private readonly matchingService: MatchingService,
+    private readonly orderService: OrderService,
     _eventEmitter: EventEmitter2, // consumed by @OnEvent decorator
   ) {}
 
@@ -372,11 +374,35 @@ export class ConversationProcessor {
       content.buttonTitle?.includes('Confirm') ||
       content.buttonTitle?.includes('Pay Cash')
     ) {
-      // Mark as cash confirmed
-      await this.conversationService.setState(phone, ConversationState.IDLE, {
-        orderConfirmed: true,
-        paymentMethod: 'CASH_ON_DELIVERY',
-      });
+      let orderId = session.data.orderId;
+
+      if (!orderId) {
+        try {
+          const order = await this.orderService.createOrderFromSession(phone, session.data);
+          orderId = order.id;
+          await this.conversationService.setState(phone, ConversationState.IDLE, {
+            orderConfirmed: true,
+            paymentMethod: 'CASH_ON_DELIVERY',
+            orderId,
+          });
+          this.logger.log(`Persisted order ${orderId} for ${phone}`);
+        } catch (err: any) {
+          this.logger.error(`Failed to create order for ${phone}: ${err.message}`);
+          await this.whatsappService.sendText(
+            phone,
+            lang === 'fr'
+              ? "Désolé, une erreur est survenue lors de la création de la commande. Veuillez réessayer."
+              : "Sorry, an error occurred while creating your order. Please try again.",
+          );
+          await this.resetToIdle(phone);
+          return;
+        }
+      } else {
+        await this.conversationService.setState(phone, ConversationState.IDLE, {
+          orderConfirmed: true,
+          paymentMethod: 'CASH_ON_DELIVERY',
+        });
+      }
 
       await this.whatsappService.sendText(
         phone,
@@ -385,9 +411,8 @@ export class ConversationProcessor {
           : '✅ Order confirmed! An agent will contact you shortly for delivery.',
       );
 
-      // Trigger the real-time geospatial driver assignment cascade
-      if (session.data.orderId) {
-        await this.matchingService.startAssignmentCascade(session.data.orderId);
+      if (orderId) {
+        await this.matchingService.startAssignmentCascade(orderId);
       } else {
         this.logger.warn(
           `No orderId found in session for ${phone} — cascade not started`,

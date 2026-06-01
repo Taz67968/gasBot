@@ -52,13 +52,16 @@ export class WhatsappController {
     @Query('hub.challenge') challenge: string,
     @Res() res: Response,
   ): void {
+    const endpoint = 'GET /webhook/whatsapp';
     if (mode === 'subscribe' && token === this.verifyToken) {
-      this.logger.log('Webhook verified successfully');
+      this.logger.log(`✅ [${endpoint}] Webhook verified successfully`);
+      console.log(`[${new Date().toISOString()}] ${endpoint} - 200 OK - Webhook verified`);
       res.status(HttpStatus.OK).send(challenge);
       return;
     }
 
-    this.logger.warn('Webhook verification failed - invalid token or mode');
+    this.logger.warn(`❌ [${endpoint}] Webhook verification failed - invalid token or mode`);
+    console.log(`[${new Date().toISOString()}] ${endpoint} - 403 FORBIDDEN - Verification failed`);
     res.status(HttpStatus.FORBIDDEN).send('Verification failed');
   }
 
@@ -89,6 +92,7 @@ export class WhatsappController {
       this.logger.error(
         `[${requestId}] No raw body received - check express.raw middleware registration`,
       );
+      console.log(`[${new Date().toISOString()}] POST /webhook/whatsapp - 400 BAD REQUEST - No raw body`);
       res.status(HttpStatus.BAD_REQUEST).send('Invalid body');
       return;
     }
@@ -98,6 +102,7 @@ export class WhatsappController {
       this.logger.warn(
         `[${requestId}] Missing X-Hub-Signature-256 header`,
       );
+      console.log(`[${new Date().toISOString()}] POST /webhook/whatsapp - 403 FORBIDDEN - Missing signature`);
       res.status(HttpStatus.FORBIDDEN).send('Missing signature');
       return;
     }
@@ -125,71 +130,54 @@ export class WhatsappController {
       this.logger.warn(
         'Invalid webhook signature - possible replay or tampering attempt',
       );
+      console.log(`[${new Date().toISOString()}] POST /webhook/whatsapp - 403 FORBIDDEN - Invalid signature`);
       res.status(HttpStatus.FORBIDDEN).send('Invalid signature');
       return;
     }
 
     // === Parse and Process ===
     try {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const payload: any = JSON.parse(rawBody.toString('utf8'));
 
-      // WhatsApp sends under entry[0].changes[0].value.messages
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
       const entries = payload.entry || [];
+      let processedMessages = 0;
       for (const entry of entries) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
         const changes = entry.changes || [];
         for (const change of changes) {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           if (change.field !== 'messages') continue;
 
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
           const value = change.value || {};
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
           const messages = value.messages || [];
 
           for (const msg of messages) {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
             const from = msg.from;
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
             const messageId = msg.id;
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
             const timestamp = msg.timestamp;
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
             const type = msg.type || 'unknown';
 
             let content: MessageReceivedEvent['content'] = {};
 
             switch (type) {
               case 'text':
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
                 content.text = msg.text?.body;
                 break;
               case 'button':
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
                 content.buttonTitle = msg.button?.text || msg.button?.payload;
                 break;
               case 'list':
               case 'list_reply':
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
                 content.listTitle = msg.list_reply?.title || msg.list_reply?.id;
                 break;
               case 'location':
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
                 content.latitude = msg.location?.latitude;
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
                 content.longitude = msg.location?.longitude;
                 break;
               case 'image':
               case 'video':
               case 'document':
               case 'sticker':
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
                 content.mediaId = msg[type]?.id;
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
                 content.mimeType = msg[type]?.mime_type;
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
                 content.caption = msg[type]?.caption;
                 break;
               default:
@@ -205,22 +193,23 @@ export class WhatsappController {
               msg,
             );
 
-            // Emit strongly-typed event for any listener (order service, vision, etc.)
             this.eventEmitter.emit('message.received', event);
-
-            this.logger.log(
-              `Emitted MessageReceivedEvent from ${from} (type=${type})`,
-            );
+            processedMessages++;
           }
         }
       }
+
+      this.logger.log(
+        `POST /webhook/whatsapp processed ${processedMessages} message(s) from ${entries.length} entry/entries`,
+      );
+      console.log(`[${new Date().toISOString()}] POST /webhook/whatsapp - 200 OK - Processed ${processedMessages} message(s)`);
 
       // Always acknowledge quickly to Meta (within 20s)
       res.status(HttpStatus.OK).send('EVENT_RECEIVED');
       return;
     } catch (err: any) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       this.logger.error(`Error processing webhook: ${err.message}`);
+      console.log(`[${new Date().toISOString()}] POST /webhook/whatsapp - 200 OK - Error processing: ${err.message}`);
       // Still return 200 to avoid Meta retry storm
       res.status(HttpStatus.OK).send('EVENT_RECEIVED');
     }
