@@ -14,7 +14,6 @@ import type { Request, Response } from 'express';
 interface WhatsappRequest extends Request {
   requestId?: string;
   rawBody?: Buffer;
-  body?: Buffer;
 }
 
 import * as crypto from 'crypto';
