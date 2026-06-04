@@ -85,11 +85,6 @@ export const envValidationSchema = Joi.object<EnvConfig>({
     .required()
     .description('Webhook verification token shared with Meta WhatsApp'),
 
-  WHATSAPP_VERIFY_TOKEN: Joi.string()
-    .min(8)
-    .required()
-    .description('Webhook verification token shared with Meta WhatsApp'),
-
   WHATSAPP_PHONE_NUMBER_ID: Joi.string()
     .min(10)
     .required()
