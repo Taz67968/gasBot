@@ -139,6 +139,8 @@ export class WhatsappController {
     try {
       const payload: any = JSON.parse(rawBody.toString('utf8'));
 
+      console.log(`[${new Date().toISOString()}] POST /webhook/whatsapp - PAYLOAD: ${JSON.stringify(payload).slice(0, 2000)}`);
+
       const entries = payload.entry || [];
       let processedMessages = 0;
       for (const entry of entries) {
