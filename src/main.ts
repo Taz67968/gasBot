@@ -6,6 +6,7 @@ import { AppModule } from './app.module';
 import { ConfigLoader } from '@/config/configuration';
 import { RedisService } from '@/redis/redis.service';
 import { Logger } from '@nestjs/common';
+import { DataSource } from 'typeorm';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -114,6 +115,22 @@ async function bootstrap() {
     );
     if (connectError.stack) {
       console.error('Stack:', connectError.stack);
+    }
+  }
+
+  // Run database migrations explicitly to ensure schema is ready before accepting requests
+  const dataSource = app.get(DataSource);
+  if (dataSource.isInitialized) {
+    try {
+      logger.log('Running database migrations...');
+      await dataSource.runMigrations();
+      logger.log('Database migrations completed successfully');
+    } catch (migrationError: any) {
+      logger.error(`Migration failed: ${migrationError.message}`);
+      if (migrationError.stack) {
+        logger.error(`Migration stack: ${migrationError.stack}`);
+      }
+      // Don't exit - let the app start anyway in case migrations already applied
     }
   }
 
