@@ -67,7 +67,9 @@ export class WhatsappService {
     }
   }
 
-  /**
+  /**[Nest] 95  - 06/04/2026, 1:46:01 PM    WARN [WhatsappController] Invalid webhook signatur[Nest] 95  - 06/04/2026, 1:46:01 PM    WARN [WhatsappController] Invalid webhook signature - possible replay or tampering attempt
+[2026-06-04T13:46:01.931Z] POST /webhook/whatsapp - 403 FORBIDDEN - Invalid signature
+[2026-06-04T13:46:01.931Z] POST /webhook/whatsapp - 403 FORBIDDEN - Invalid signature
    * Send interactive buttons (max 3 choices, as per WhatsApp limit).
    */
   async sendInteractiveButtons(

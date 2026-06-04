@@ -21,7 +21,6 @@ export interface EnvConfig {
 
   // WhatsApp Business API (Meta Cloud API)
   WHATSAPP_API_TOKEN: string;
-  WHATSAPP_APP_SECRET: string;
   WHATSAPP_VERIFY_TOKEN: string;
   WHATSAPP_PHONE_NUMBER_ID: string;
 
@@ -79,7 +78,12 @@ export const envValidationSchema = Joi.object<EnvConfig>({
   WHATSAPP_API_TOKEN: Joi.string()
     .min(20)
     .required()
-    .description('Permanent WhatsApp Business API access token from Meta (used for both API calls and X-Hub-Signature-256)'),
+    .description('Permanent WhatsApp Business API access token from Meta (used for API calls and webhook signature validation)'),
+
+  WHATSAPP_VERIFY_TOKEN: Joi.string()
+    .min(8)
+    .required()
+    .description('Webhook verification token shared with Meta WhatsApp'),
 
   WHATSAPP_VERIFY_TOKEN: Joi.string()
     .min(8)
