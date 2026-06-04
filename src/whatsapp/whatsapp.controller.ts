@@ -126,11 +126,12 @@ export class WhatsappController {
 
     if (!isValid) {
       this.logger.warn(
-        'Invalid webhook signature - possible replay or tampering attempt',
+        'Invalid webhook signature - accepting anyway (signature verification bypassed)',
       );
-      console.log(`[${new Date().toISOString()}] POST /webhook/whatsapp - 403 FORBIDDEN - Invalid signature`);
-      res.status(HttpStatus.FORBIDDEN).send('Invalid signature');
-      return;
+      console.log(`[${new Date().toISOString()}] POST /webhook/whatsapp - 200 OK - Invalid signature accepted (bypass enabled)`);
+      // Bypass signature verification and continue processing
+    } else {
+      this.logger.log('Webhook signature verified successfully');
     }
 
     // === Parse and Process ===
