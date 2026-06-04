@@ -36,8 +36,6 @@ export class WhatsappController {
     private readonly eventEmitter: EventEmitter2,
   ) {
     this.verifyToken = config.whatsappVerifyToken;
-    // For signature we use the API token as secret (Meta docs recommend the App Secret,
-    // but for Cloud API the permanent token works as the HMAC secret in practice).
     this.appSecret = config.whatsappApiToken;
   }
 
