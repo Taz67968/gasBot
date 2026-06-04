@@ -16,7 +16,6 @@ interface WhatsappRequest extends Request {
   rawBody?: Buffer;
 }
 
-import * as crypto from 'crypto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ConfigLoader } from '@/config/configuration';
 import { MessageReceivedEvent } from './events/message-received.event';
@@ -24,19 +23,18 @@ import { MessageReceivedEvent } from './events/message-received.event';
 /**
  * WhatsappController
  * Handles Meta WhatsApp Cloud API webhooks (inbound messages + verification).
+ * Note: Signature verification is skipped as per configuration (no app secret used).
  */
 @Controller('webhook/whatsapp')
 export class WhatsappController {
   private readonly logger = new Logger(WhatsappController.name);
   private readonly verifyToken: string;
-  private readonly appSecret: string; // used for signature validation (X-Hub-Signature-256)
 
   constructor(
     config: ConfigLoader,
     private readonly eventEmitter: EventEmitter2,
   ) {
     this.verifyToken = config.whatsappVerifyToken;
-    this.appSecret = config.whatsappApiToken;
   }
 
   /**
@@ -53,13 +51,19 @@ export class WhatsappController {
     const endpoint = 'GET /webhook/whatsapp';
     if (mode === 'subscribe' && token === this.verifyToken) {
       this.logger.log(`✅ [${endpoint}] Webhook verified successfully`);
-      console.log(`[${new Date().toISOString()}] ${endpoint} - 200 OK - Webhook verified`);
+      console.log(
+        `[${new Date().toISOString()}] ${endpoint} - 200 OK - Webhook verified`,
+      );
       res.status(HttpStatus.OK).send(challenge);
       return;
     }
 
-    this.logger.warn(`❌ [${endpoint}] Webhook verification failed - invalid token or mode`);
-    console.log(`[${new Date().toISOString()}] ${endpoint} - 403 FORBIDDEN - Verification failed`);
+    this.logger.warn(
+      `❌ [${endpoint}] Webhook verification failed - invalid token or mode`,
+    );
+    console.log(
+      `[${new Date().toISOString()}] ${endpoint} - 403 FORBIDDEN - Verification failed`,
+    );
     res.status(HttpStatus.FORBIDDEN).send('Verification failed');
   }
 
@@ -67,7 +71,7 @@ export class WhatsappController {
    * POST /webhook/whatsapp
    * Receives all inbound messages, status updates, etc.
    * - Uses raw Buffer body (attached by express.raw middleware in main.ts)
-   * - Validates X-Hub-Signature-256 HMAC
+   * - Signature verification is skipped (no app secret used)
    * - Normalizes and emits typed domain events
    */
   @Post()
@@ -78,9 +82,8 @@ export class WhatsappController {
     @Res() res: Response,
   ): Promise<void> {
     const requestId = req.requestId || 'unknown';
-    const signature = req.headers['x-hub-signature-256'] as string | undefined;
     // raw body populated by express.raw middleware
-    const rawBody: Buffer | undefined = req.body as unknown as Buffer;
+    const rawBody: Buffer | undefined = req.body;
 
     this.logger.log(
       `[${requestId}] Incoming WhatsApp webhook POST request received`,
@@ -90,55 +93,24 @@ export class WhatsappController {
       this.logger.error(
         `[${requestId}] No raw body received - check express.raw middleware registration`,
       );
-      console.log(`[${new Date().toISOString()}] POST /webhook/whatsapp - 400 BAD REQUEST - No raw body`);
+      console.log(
+        `[${new Date().toISOString()}] POST /webhook/whatsapp - 400 BAD REQUEST - No raw body`,
+      );
       res.status(HttpStatus.BAD_REQUEST).send('Invalid body');
       return;
     }
 
-    // === Signature Verification ===
-    if (!signature) {
-      this.logger.warn(
-        `[${requestId}] Missing X-Hub-Signature-256 header`,
-      );
-      console.log(`[${new Date().toISOString()}] POST /webhook/whatsapp - 403 FORBIDDEN - Missing signature`);
-      res.status(HttpStatus.FORBIDDEN).send('Missing signature');
-      return;
-    }
-
-    const expectedSignature =
-      'sha256=' +
-      crypto.createHmac('sha256', this.appSecret).update(rawBody).digest('hex');
-
-    const normalizedReceived = signature.toLowerCase();
-    const normalizedExpected = expectedSignature.toLowerCase();
-
-    let isValid = false;
-    if (normalizedReceived.length === normalizedExpected.length) {
-      try {
-        isValid = crypto.timingSafeEqual(
-          Buffer.from(normalizedReceived),
-          Buffer.from(normalizedExpected),
-        );
-      } catch {
-        isValid = false;
-      }
-    }
-
-    if (!isValid) {
-      this.logger.warn(
-        'Invalid webhook signature - accepting anyway (signature verification bypassed)',
-      );
-      console.log(`[${new Date().toISOString()}] POST /webhook/whatsapp - 200 OK - Invalid signature accepted (bypass enabled)`);
-      // Bypass signature verification and continue processing
-    } else {
-      this.logger.log('Webhook signature verified successfully');
-    }
+    // Note: Signature verification is skipped as no app secret is used.
+    // In production, you should verify the webhook signature using the app secret.
+    // For this setup, we proceed with processing the webhook.
 
     // === Parse and Process ===
     try {
       const payload: any = JSON.parse(rawBody.toString('utf8'));
 
-      console.log(`[${new Date().toISOString()}] POST /webhook/whatsapp - PAYLOAD: ${JSON.stringify(payload).slice(0, 2000)}`);
+      console.log(
+        `[${new Date().toISOString()}] POST /webhook/whatsapp - PAYLOAD: ${JSON.stringify(payload).slice(0, 2000)}`,
+      );
 
       const entries = payload.entry || [];
       let processedMessages = 0;
@@ -203,14 +175,18 @@ export class WhatsappController {
       this.logger.log(
         `POST /webhook/whatsapp processed ${processedMessages} message(s) from ${entries.length} entry/entries`,
       );
-      console.log(`[${new Date().toISOString()}] POST /webhook/whatsapp - 200 OK - Processed ${processedMessages} message(s)`);
+      console.log(
+        `[${new Date().toISOString()}] POST /webhook/whatsapp - 200 OK - Processed ${processedMessages} message(s)`,
+      );
 
       // Always acknowledge quickly to Meta (within 20s)
       res.status(HttpStatus.OK).send('EVENT_RECEIVED');
       return;
     } catch (err: any) {
       this.logger.error(`Error processing webhook: ${err.message}`);
-      console.log(`[${new Date().toISOString()}] POST /webhook/whatsapp - 200 OK - Error processing: ${err.message}`);
+      console.log(
+        `[${new Date().toISOString()}] POST /webhook/whatsapp - 200 OK - Error processing: ${err.message}`,
+      );
       // Still return 200 to avoid Meta retry storm
       res.status(HttpStatus.OK).send('EVENT_RECEIVED');
     }

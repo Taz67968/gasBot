@@ -53,16 +53,23 @@ export class WhatsappService {
       type: 'text',
       text: { body: text },
     };
-    console.log(`[${new Date().toISOString()}] WhatsApp SEND → POST /${this.phoneNumberId}/messages ::`, JSON.stringify(payload));
+    console.log(
+      `[${new Date().toISOString()}] WhatsApp SEND → POST /${this.phoneNumberId}/messages ::`,
+      JSON.stringify(payload),
+    );
     try {
       await this.http.post(`/${this.phoneNumberId}/messages`, payload);
       this.logger.log(`Text sent to ${formattedTo}`);
-      console.log(`[${new Date().toISOString()}] WhatsApp SEND ✅ Text sent to ${formattedTo}`);
+      console.log(
+        `[${new Date().toISOString()}] WhatsApp SEND ✅ Text sent to ${formattedTo}`,
+      );
     } catch (error: any) {
       this.logger.error(
         `Failed to send text to ${formattedTo}: ${error.response?.data?.error?.message || error.message}`,
       );
-      console.log(`[${new Date().toISOString()}] WhatsApp SEND ❌ Failed to send text to ${formattedTo}: ${error.response?.data?.error?.message || error.message}`);
+      console.log(
+        `[${new Date().toISOString()}] WhatsApp SEND ❌ Failed to send text to ${formattedTo}: ${error.response?.data?.error?.message || error.message}`,
+      );
       throw error;
     }
   }
@@ -98,16 +105,23 @@ export class WhatsappService {
       type: 'interactive',
       interactive,
     };
-    console.log(`[${new Date().toISOString()}] WhatsApp SEND → POST /${this.phoneNumberId}/messages ::`, JSON.stringify(payload));
+    console.log(
+      `[${new Date().toISOString()}] WhatsApp SEND → POST /${this.phoneNumberId}/messages ::`,
+      JSON.stringify(payload),
+    );
     try {
       await this.http.post(`/${this.phoneNumberId}/messages`, payload);
       this.logger.log(`Interactive buttons sent to ${formattedTo}`);
-      console.log(`[${new Date().toISOString()}] WhatsApp SEND ✅ Interactive buttons sent to ${formattedTo}`);
+      console.log(
+        `[${new Date().toISOString()}] WhatsApp SEND ✅ Interactive buttons sent to ${formattedTo}`,
+      );
     } catch (error: any) {
       this.logger.error(
         `Failed to send buttons to ${formattedTo}: ${error.response?.data?.error?.message || error.message}`,
       );
-      console.log(`[${new Date().toISOString()}] WhatsApp SEND ❌ Failed to send buttons to ${formattedTo}: ${error.response?.data?.error?.message || error.message}`);
+      console.log(
+        `[${new Date().toISOString()}] WhatsApp SEND ❌ Failed to send buttons to ${formattedTo}: ${error.response?.data?.error?.message || error.message}`,
+      );
       throw error;
     }
   }

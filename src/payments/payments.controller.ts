@@ -30,9 +30,9 @@ export class PaymentsController {
    * Agent confirms they have physically collected cash for the order.
    * Protected: Only users with AGENT role can call this.
    */
-   @Post('agent-confirm')
-   @Roles(Role.AGENT)
-   @HttpCode(HttpStatus.OK)
+  @Post('agent-confirm')
+  @Roles(Role.AGENT)
+  @HttpCode(HttpStatus.OK)
   async confirmCashByAgent(
     @Body() dto: AgentConfirmPaymentDto,
     @CurrentUser('sub') agentId: string, // JWT subject = agent id

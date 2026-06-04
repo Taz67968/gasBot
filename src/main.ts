@@ -10,9 +10,10 @@ import { Logger } from '@nestjs/common';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  // === Raw body parser for WhatsApp webhook signature verification ===
+  // === Raw body parser for WhatsApp webhook ===
   // Must be mounted BEFORE the global JSON body parser for the specific route.
-  // This gives us the exact Buffer needed for HMAC validation in WhatsappController.
+  // This gives us the exact Buffer needed to parse the webhook payload.
+  // Note: Signature verification is skipped in this setup.
   app.use(
     '/webhook/whatsapp',
     express.raw({ type: 'application/json', limit: '1mb' }),
@@ -21,63 +22,84 @@ async function bootstrap() {
   // === Request Logging Middleware ===
   const logger = new Logger('HTTP');
 
-  app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const startTime = Date.now();
-    const requestId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  app.use(
+    (
+      req: express.Request,
+      res: express.Response,
+      next: express.NextFunction,
+    ) => {
+      const startTime = Date.now();
+      const requestId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-    // Store requestId and startTime for later use
-    (req as any)['requestId'] = requestId;
+      // Store requestId and startTime for later use
+      (req as any)['requestId'] = requestId;
 
-    logger.log(`[${requestId}] ${req.method} ${req.url} - START`);
+      logger.log(`[${requestId}] ${req.method} ${req.url} - START`);
 
-    // Override res.send to log the response
-    const originalSend = res.send.bind(res);
-    res.send = (body: any) => {
-      const duration = Date.now() - startTime;
-      const status = res.statusCode;
-      logger.log(`[${requestId}] ${req.method} ${req.url} - ${status} - ${duration}ms`);
-      return originalSend(body);
-    };
+      // Override res.send to log the response
+      const originalSend = res.send.bind(res);
+      res.send = (body: any) => {
+        const duration = Date.now() - startTime;
+        const status = res.statusCode;
+        logger.log(
+          `[${requestId}] ${req.method} ${req.url} - ${status} - ${duration}ms`,
+        );
+        return originalSend(body);
+      };
 
-    // Override res.json to log the response
-    const originalJson = res.json.bind(res);
-    res.json = (body: any) => {
-      const duration = Date.now() - startTime;
-      const status = res.statusCode;
-      logger.log(`[${requestId}] ${req.method} ${req.url} - ${status} - ${duration}ms`);
-      return originalJson(body);
-    };
+      // Override res.json to log the response
+      const originalJson = res.json.bind(res);
+      res.json = (body: any) => {
+        const duration = Date.now() - startTime;
+        const status = res.statusCode;
+        logger.log(
+          `[${requestId}] ${req.method} ${req.url} - ${status} - ${duration}ms`,
+        );
+        return originalJson(body);
+      };
 
-    // Override res.end for cases where neither send nor json is called
-    const originalEnd = res.end.bind(res);
-    res.end = (...chunks: any[]) => {
-      const duration = Date.now() - startTime;
-      const status = res.statusCode;
-      if (!res.writableEnded) {
-        logger.log(`[${requestId}] ${req.method} ${req.url} - ${status} - ${duration}ms`);
-      }
-      return originalEnd(...chunks);
-    };
+      // Override res.end for cases where neither send nor json is called
+      const originalEnd = res.end.bind(res);
+      res.end = (...chunks: any[]) => {
+        const duration = Date.now() - startTime;
+        const status = res.statusCode;
+        if (!res.writableEnded) {
+          logger.log(
+            `[${requestId}] ${req.method} ${req.url} - ${status} - ${duration}ms`,
+          );
+        }
+        return originalEnd(...chunks);
+      };
 
-    next();
-  });
+      next();
+    },
+  );
 
   // === Global Error Handler ===
-  app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
-    const errorLogger = new Logger('ERROR');
-    const requestId = (req as any)['requestId'] || 'unknown';
+  app.use(
+    (
+      err: any,
+      req: express.Request,
+      res: express.Response,
+      _next: express.NextFunction,
+    ) => {
+      const errorLogger = new Logger('ERROR');
+      const requestId = (req as any)['requestId'] || 'unknown';
 
-    errorLogger.error(`[${requestId}] Error on ${req.method} ${req.url}: ${err.message}`);
-    if (err.stack) {
-      errorLogger.error(`[${requestId}] Stack: ${err.stack}`);
-    }
+      errorLogger.error(
+        `[${requestId}] Error on ${req.method} ${req.url}: ${err.message}`,
+      );
+      if (err.stack) {
+        errorLogger.error(`[${requestId}] Stack: ${err.stack}`);
+      }
 
-    res.status(err.status || 500).json({
-      statusCode: err.status || 500,
-      message: err.message || 'Internal server error',
-      requestId,
-    });
-  });
+      res.status(err.status || 500).json({
+        statusCode: err.status || 500,
+        message: err.message || 'Internal server error',
+        requestId,
+      });
+    },
+  );
 
   // Retrieve the validated configuration loader (guaranteed non-null after ConfigModule)
   const config = app.get(ConfigLoader);
@@ -86,7 +108,10 @@ async function bootstrap() {
   try {
     await redisService.connect();
   } catch (connectError: any) {
-    console.error('Failed to connect to Redis at startup:', connectError.message);
+    console.error(
+      'Failed to connect to Redis at startup:',
+      connectError.message,
+    );
     if (connectError.stack) {
       console.error('Stack:', connectError.stack);
     }

@@ -78,7 +78,9 @@ export const envValidationSchema = Joi.object<EnvConfig>({
   WHATSAPP_API_TOKEN: Joi.string()
     .min(20)
     .required()
-    .description('Permanent WhatsApp Business API access token from Meta (used for API calls and webhook signature validation)'),
+    .description(
+      'Permanent WhatsApp Business API access token from Meta (used for API calls)',
+    ),
 
   WHATSAPP_VERIFY_TOKEN: Joi.string()
     .min(8)

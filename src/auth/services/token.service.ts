@@ -86,7 +86,7 @@ export class TokenService implements OnModuleDestroy {
     const raw = await this.getRedis().get(sessionKey);
 
     if (raw) {
-      const profile: ActiveTokenSession = JSON.parse(raw as string) as ActiveTokenSession;
+      const profile: ActiveTokenSession = JSON.parse(raw) as ActiveTokenSession;
       profile.lastUsedAt = new Date();
 
       const ttl = await this.getRedis().ttl(sessionKey);

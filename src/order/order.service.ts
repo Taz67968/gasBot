@@ -29,7 +29,11 @@ export class OrderService {
     }
 
     const location = sessionData.location;
-    if (!location || typeof location.lat !== 'number' || typeof location.lng !== 'number') {
+    if (
+      !location ||
+      typeof location.lat !== 'number' ||
+      typeof location.lng !== 'number'
+    ) {
       throw new Error('No valid location in session');
     }
 
@@ -41,7 +45,14 @@ export class OrderService {
       `INSERT INTO orders (reference, customer_id, delivery_location, total_xaf, status, created_at, updated_at)
        VALUES ($1, $2, ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography, $5, $6, NOW(), NOW())
        RETURNING *`,
-      [reference, customer.id, location.lng, location.lat, totalXaf, OrderStatus.CASH_ACKNOWLEDGED],
+      [
+        reference,
+        customer.id,
+        location.lng,
+        location.lat,
+        totalXaf,
+        OrderStatus.CASH_ACKNOWLEDGED,
+      ],
     );
 
     const [orderRow] = await this.dataSource.query(

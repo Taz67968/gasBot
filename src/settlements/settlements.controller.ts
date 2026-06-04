@@ -52,9 +52,7 @@ export class SettlementsController {
       );
       return result;
     } catch (err: any) {
-      this.logger.error(
-        `Failed to fetch settlement summary: ${err.message}`,
-      );
+      this.logger.error(`Failed to fetch settlement summary: ${err.message}`);
       throw err;
     }
   }

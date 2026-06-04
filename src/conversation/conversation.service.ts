@@ -23,9 +23,7 @@ export class ConversationService implements OnModuleDestroy {
   private readonly logger = new Logger(ConversationService.name);
   private readonly TTL_SECONDS = 24 * 60 * 60; // 24 hours absolute rolling TTL
 
-  constructor(
-    private readonly redisService: RedisService,
-  ) {
+  constructor(private readonly redisService: RedisService) {
     const redis = this.redisService.getClient();
 
     redis.on('error', (err) => {

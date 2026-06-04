@@ -7,7 +7,10 @@ import { Customer } from '@/database/entities/customer.entity';
 import { CustomerModule } from '@/customer/customer.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Order, Payment, Customer]), CustomerModule],
+  imports: [
+    TypeOrmModule.forFeature([Order, Payment, Customer]),
+    CustomerModule,
+  ],
   providers: [OrderService],
   exports: [OrderService],
 })

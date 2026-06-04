@@ -378,21 +378,30 @@ export class ConversationProcessor {
 
       if (!orderId) {
         try {
-          const order = await this.orderService.createOrderFromSession(phone, session.data);
+          const order = await this.orderService.createOrderFromSession(
+            phone,
+            session.data,
+          );
           orderId = order.id;
-          await this.conversationService.setState(phone, ConversationState.IDLE, {
-            orderConfirmed: true,
-            paymentMethod: 'CASH_ON_DELIVERY',
-            orderId,
-          });
+          await this.conversationService.setState(
+            phone,
+            ConversationState.IDLE,
+            {
+              orderConfirmed: true,
+              paymentMethod: 'CASH_ON_DELIVERY',
+              orderId,
+            },
+          );
           this.logger.log(`Persisted order ${orderId} for ${phone}`);
         } catch (err: any) {
-          this.logger.error(`Failed to create order for ${phone}: ${err.message}`);
+          this.logger.error(
+            `Failed to create order for ${phone}: ${err.message}`,
+          );
           await this.whatsappService.sendText(
             phone,
             lang === 'fr'
-              ? "Désolé, une erreur est survenue lors de la création de la commande. Veuillez réessayer."
-              : "Sorry, an error occurred while creating your order. Please try again.",
+              ? 'Désolé, une erreur est survenue lors de la création de la commande. Veuillez réessayer.'
+              : 'Sorry, an error occurred while creating your order. Please try again.',
           );
           await this.resetToIdle(phone);
           return;
