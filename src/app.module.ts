@@ -79,7 +79,7 @@ import { AppService } from './app.service';
     AuthModule,
 
     // Global event emitter for domain events (used by Whatsapp webhook → Vision / Order flows)
-    EventEmitterModule.forRoot(),
+    EventEmitterModule.forRoot({ global: true }),
 
     // WhatsApp Cloud API + Vision analysis modules
     WhatsappModule,

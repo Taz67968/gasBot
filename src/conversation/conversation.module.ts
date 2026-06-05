@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ConversationService } from './conversation.service';
 import { ConversationProcessor } from './processors/conversation.processor';
 import { CustomerModule } from '@/customer/customer.module';
@@ -10,7 +9,6 @@ import { OrderModule } from '@/order/order.module';
 
 @Module({
   imports: [
-    EventEmitterModule.forRoot(),
     CustomerModule,
     WhatsappModule,
     VisionModule,
