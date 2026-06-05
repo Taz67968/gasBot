@@ -1,9 +1,8 @@
-import { Injectable, OnModuleDestroy, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConversationState } from './enums/conversation-state.enum';
-import { RedisService } from '@/redis/redis.service';
 
 /**
- * Interface for the stored conversation session in Redis.
+ * Interface for the stored conversation session.
  */
 export interface ConversationSession {
   state: ConversationState;
@@ -14,39 +13,16 @@ export interface ConversationSession {
 
 /**
  * ConversationService
- * Core session manager powered exclusively by Redis.
- * Uses per-user keys with 24h rolling TTL.
- * All state is ephemeral and isolated to Redis (no DB persistence for flow state).
+ * Core session manager for the webhook conversation flow.
+ * Uses an in-memory map so the webhook path does not depend on Redis at startup.
  */
 @Injectable()
-export class ConversationService implements OnModuleDestroy {
+export class ConversationService {
   private readonly logger = new Logger(ConversationService.name);
-  private readonly TTL_SECONDS = 24 * 60 * 60; // 24 hours absolute rolling TTL
-
-  constructor(private readonly redisService: RedisService) {
-    const redis = this.redisService.getClient();
-
-    redis.on('error', (err) => {
-      this.logger.error(
-        `Redis connection error in ConversationService: ${err.message}`,
-      );
-    });
-
-    redis.on('connect', () => {
-      this.logger.log('Connected to Redis for conversation state management');
-    });
-
-    redis.on('ready', () => {
-      this.logger.log('Connected to Redis for conversation state management');
-    });
-  }
-
-  private getRedis() {
-    return this.redisService.getClient();
-  }
+  private readonly sessions = new Map<string, ConversationSession>();
 
   private getKey(phoneNumber: string): string {
-    return `conv:${phoneNumber}`;
+    return phoneNumber.trim().toLowerCase();
   }
 
   /**
@@ -54,12 +30,10 @@ export class ConversationService implements OnModuleDestroy {
    */
   async getSession(phoneNumber: string): Promise<ConversationSession> {
     const key = this.getKey(phoneNumber);
-    const raw = await this.getRedis().get(key);
+    const existing = this.sessions.get(key);
 
-    if (raw) {
-      const session: ConversationSession = JSON.parse(raw);
-      await this.getRedis().expire(key, this.TTL_SECONDS);
-      return session;
+    if (existing) {
+      return existing;
     }
 
     const initial: ConversationSession = {
@@ -69,7 +43,7 @@ export class ConversationService implements OnModuleDestroy {
       lastUpdated: new Date().toISOString(),
     };
 
-    await this.getRedis().setex(key, this.TTL_SECONDS, JSON.stringify(initial));
+    this.sessions.set(key, initial);
     return initial;
   }
 
@@ -95,7 +69,7 @@ export class ConversationService implements OnModuleDestroy {
       lastUpdated: new Date().toISOString(),
     };
 
-    await this.getRedis().setex(key, this.TTL_SECONDS, JSON.stringify(updated));
+    this.sessions.set(key, updated);
     this.logger.debug(
       `Conversation state updated for ${phoneNumber} → ${state}`,
     );
@@ -119,7 +93,7 @@ export class ConversationService implements OnModuleDestroy {
       lastUpdated: new Date().toISOString(),
     };
 
-    await this.getRedis().setex(key, this.TTL_SECONDS, JSON.stringify(updated));
+    this.sessions.set(key, updated);
     return updated;
   }
 
@@ -128,11 +102,7 @@ export class ConversationService implements OnModuleDestroy {
    */
   async clearSession(phoneNumber: string): Promise<void> {
     const key = this.getKey(phoneNumber);
-    await this.getRedis().del(key);
+    this.sessions.delete(key);
     this.logger.log(`Conversation session cleared for ${phoneNumber}`);
-  }
-
-  async onModuleDestroy() {
-    await this.getRedis().quit();
   }
 }

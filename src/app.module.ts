@@ -8,7 +8,6 @@ import { validateEnv } from '@/config/env.validation';
 import { ConfigurationModule } from '@/config/config.module';
 import { ConfigLoader } from '@/config/configuration';
 
-import { AuthModule } from '@/auth/auth.module';
 import { RolesGuard } from '@/common/guards/roles.guard';
 
 import { Customer } from '@/database/entities/customer.entity';
@@ -25,9 +24,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { GeoModule } from '@/geo/geo.module';
 import { MatchingModule } from '@/matching/matching.module';
 import { PaymentsModule } from '@/payments/payments.module';
-import { RedisModule } from '@/redis/redis.module';
 import { DispatchModule } from '@/dispatch/dispatch.module';
-import { TrackingModule } from '@/tracking/tracking.module';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -76,8 +73,6 @@ import { AppService } from './app.service';
        }),
      }),
 
-    AuthModule,
-
     // Global event emitter for domain events (used by Whatsapp webhook → Vision / Order flows)
     EventEmitterModule.forRoot({ global: true }),
 
@@ -117,12 +112,8 @@ import { AppService } from './app.service';
     // Payments & Settlements (Cash on Delivery / Pay by Hand)
     PaymentsModule,
 
-    // Global Redis singleton for services (Conversation, Tracking, Auth, Matching)
-    RedisModule,
-
     // Driver dispatch communications + high-frequency Redis geospatial tracking
     DispatchModule,
-    TrackingModule,
   ],
   controllers: [AppController],
   providers: [
