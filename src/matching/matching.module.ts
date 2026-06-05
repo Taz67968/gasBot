@@ -8,6 +8,7 @@ import { GeoModule } from '@/geo/geo.module';
 import { WhatsappModule } from '@/whatsapp/whatsapp.module';
 import { DispatchModule } from '@/dispatch/dispatch.module';
 import { Order } from '@/database/entities/order.entity';
+import { RedisModule } from '@/redis/redis.module';
 
 /**
  * MatchingModule
@@ -24,6 +25,7 @@ import { Order } from '@/database/entities/order.entity';
     GeoModule,
     WhatsappModule,
     DispatchModule,
+    RedisModule,
   ],
   providers: [MatchingService, MatchingProcessor, MatchingResponseListener],
   exports: [MatchingService],
