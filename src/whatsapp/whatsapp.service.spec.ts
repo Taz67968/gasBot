@@ -56,6 +56,15 @@ describe('WhatsappService', () => {
     );
   });
 
+  it('should preserve international numbers that already include a country code', async () => {
+    await service.sendText('+237680123456', 'hello');
+    const axiosInstance = (mockedAxios.create as jest.Mock).mock.results[0].value;
+    expect(axiosInstance.post).toHaveBeenCalledWith(
+      '/phone-number-id/messages',
+      expect.objectContaining({ to: '237680123456' }),
+    );
+  });
+
   it('should throw for invalid numbers', async () => {
     await expect(service.sendText('', 'hello')).rejects.toThrow('Invalid phone number');
     await expect(service.sendText('abc', 'hello')).rejects.toThrow('Invalid phone number');

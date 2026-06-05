@@ -3,17 +3,29 @@ import axios, { AxiosInstance } from 'axios';
 import { ConfigLoader } from '@/config/configuration';
 
 function formatE164(raw: string): string {
-  let digits = raw.replace(/[^0-9]/g, '');
+  const normalized = raw.trim().replace(/\s+/g, '');
+  if (!normalized) {
+    throw new Error(`Invalid phone number: ${raw}`);
+  }
+
+  const digits = normalized.startsWith('+')
+    ? normalized.slice(1).replace(/\D/g, '')
+    : normalized.replace(/\D/g, '');
+
   if (!digits) {
     throw new Error(`Invalid phone number: ${raw}`);
   }
-  const countryCode = '234';
+
+  // Preserve already international numbers such as +237... or 237... as-is.
   if (digits.startsWith('0')) {
-    digits = countryCode + digits.slice(1);
-  } else if (!digits.startsWith(countryCode)) {
-    digits = countryCode + digits;
+    return `234${digits.slice(1)}`;
   }
-  return digits;
+
+  if (digits.length > 10) {
+    return digits;
+  }
+
+  return `234${digits}`;
 }
 
 /**
