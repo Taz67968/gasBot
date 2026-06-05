@@ -59,7 +59,7 @@ import { AppService } from './app.service';
          password: config.dbPassword,
          database: config.dbName,
          entities: [Customer, Zone, Agent, Order, Payment],
-         migrations: [join(__dirname, '../database/migrations/*{.ts,.js}')],
+         migrations: [join(__dirname, 'database/migrations/*{.ts,.js}')],
          migrationsRun: true, // run migrations on startup in all environments
          synchronize: config.nodeEnv === 'test', // auto-sync schema for testing
          logging: config.nodeEnv !== 'production',
