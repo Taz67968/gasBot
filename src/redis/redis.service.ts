@@ -11,7 +11,8 @@ export class RedisService implements OnModuleDestroy {
     const url = this.config.redisUrl;
 
     this.client = new Redis(url, {
-      maxRetriesPerRequest: 10,
+      lazyConnect: true,
+      maxRetriesPerRequest: 3,
       enableReadyCheck: true,
       connectTimeout: 15000,
       commandTimeout: 10000,
@@ -38,10 +39,19 @@ export class RedisService implements OnModuleDestroy {
   }
 
   async connect(): Promise<void> {
+    if (this.client.status === 'ready') return;
+    if (this.client.status === 'connecting') return;
     await this.client.connect();
   }
 
   async onModuleDestroy() {
-    await this.client.quit();
+    if (
+      this.client.status === 'ready' ||
+      this.client.status === 'connecting' ||
+      this.client.status === 'wait' ||
+      this.client.status === 'reconnecting'
+    ) {
+      await this.client.quit();
+    }
   }
 }

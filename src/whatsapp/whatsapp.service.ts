@@ -71,7 +71,7 @@ export class WhatsappService {
     );
     try {
       await this.http.post(`/${this.phoneNumberId}/messages`, payload);
-      this.logger.log(`Text sent to ${formattedTo}`);
+      this.logger.log(`Bot reply to ${formattedTo}: ${text}`);
       console.log(
         `[${new Date().toISOString()}] WhatsApp SEND ✅ Text sent to ${formattedTo}`,
       );
@@ -123,7 +123,7 @@ export class WhatsappService {
     );
     try {
       await this.http.post(`/${this.phoneNumberId}/messages`, payload);
-      this.logger.log(`Interactive buttons sent to ${formattedTo}`);
+      this.logger.log(`Bot reply to ${formattedTo}: ${body}`);
       console.log(
         `[${new Date().toISOString()}] WhatsApp SEND ✅ Interactive buttons sent to ${formattedTo}`,
       );
@@ -167,7 +167,7 @@ export class WhatsappService {
         type: 'interactive',
         interactive,
       });
-      this.logger.log(`Interactive list sent to ${formattedTo}`);
+      this.logger.log(`Bot reply to ${formattedTo}: ${body}`);
     } catch (error: any) {
       this.logger.error(
         `Failed to send list to ${formattedTo}: ${error.response?.data?.error?.message || error.message}`,
@@ -197,7 +197,7 @@ export class WhatsappService {
         type: 'interactive',
         interactive,
       });
-      this.logger.log(`Location request sent to ${formattedTo}`);
+      this.logger.log(`Bot reply to ${formattedTo}: ${body}`);
     } catch (error: any) {
       this.logger.error(
         `Failed to send location request to ${formattedTo}: ${error.response?.data?.error?.message || error.message}`,
