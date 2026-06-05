@@ -22,37 +22,55 @@ export class InitialGasbotSchema1747914000000 implements MigrationInterface {
 
     // === ENUM TYPES ===
     await queryRunner.query(`
-      CREATE TYPE "public"."agent_status_enum" AS ENUM (
-        'PENDING',
-        'ACTIVE',
-        'SUSPENDED',
-        'OFFLINE',
-        'BUSY'
-      )
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'agent_status_enum' AND typnamespace = 'public'::regnamespace) THEN
+          CREATE TYPE "public"."agent_status_enum" AS ENUM (
+            'PENDING',
+            'ACTIVE',
+            'SUSPENDED',
+            'OFFLINE',
+            'BUSY'
+          );
+        END IF;
+      END
+      $$;
     `);
 
     await queryRunner.query(`
-      CREATE TYPE "public"."order_status_enum" AS ENUM (
-        'PENDING',
-        'CASH_ACKNOWLEDGED',
-        'AGENT_ASSIGNED',
-        'EN_ROUTE',
-        'NEARBY',
-        'DELIVERED',
-        'CANCELLED'
-      )
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'order_status_enum' AND typnamespace = 'public'::regnamespace) THEN
+          CREATE TYPE "public"."order_status_enum" AS ENUM (
+            'PENDING',
+            'CASH_ACKNOWLEDGED',
+            'AGENT_ASSIGNED',
+            'EN_ROUTE',
+            'NEARBY',
+            'DELIVERED',
+            'CANCELLED'
+          );
+        END IF;
+      END
+      $$;
     `);
 
     await queryRunner.query(`
-      CREATE TYPE "public"."payment_status_enum" AS ENUM (
-        'UNPAID',
-        'PAID_BY_HAND'
-      )
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'payment_status_enum' AND typnamespace = 'public'::regnamespace) THEN
+          CREATE TYPE "public"."payment_status_enum" AS ENUM (
+            'UNPAID',
+            'PAID_BY_HAND'
+          );
+        END IF;
+      END
+      $$;
     `);
 
     // === CUSTOMERS TABLE ===
     await queryRunner.query(`
-      CREATE TABLE "customers" (
+      CREATE TABLE IF NOT EXISTS "customers" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
         "phone" character varying(20) NOT NULL,
         "language" character varying(5) NOT NULL DEFAULT 'en',
@@ -66,7 +84,7 @@ export class InitialGasbotSchema1747914000000 implements MigrationInterface {
 
     // === ZONES TABLE ===
     await queryRunner.query(`
-      CREATE TABLE "zones" (
+      CREATE TABLE IF NOT EXISTS "zones" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
         "name" character varying(100) NOT NULL,
         "polygon" geography(Polygon,4326),
@@ -78,7 +96,7 @@ export class InitialGasbotSchema1747914000000 implements MigrationInterface {
 
     // === AGENTS TABLE ===
     await queryRunner.query(`
-      CREATE TABLE "agents" (
+      CREATE TABLE IF NOT EXISTS "agents" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
         "phone" character varying(20) NOT NULL,
         "full_name" character varying(150) NOT NULL,
@@ -95,12 +113,12 @@ export class InitialGasbotSchema1747914000000 implements MigrationInterface {
 
     // Explicit spatial GIST index on agents.location (for fast ST_DWithin, ST_Distance queries)
     await queryRunner.query(`
-      CREATE INDEX "IDX_agents_location_gist" ON "agents" USING GIST ("location")
+      CREATE INDEX IF NOT EXISTS "IDX_agents_location_gist" ON "agents" USING GIST ("location")
     `);
 
     // === ORDERS TABLE ===
     await queryRunner.query(`
-      CREATE TABLE "orders" (
+      CREATE TABLE IF NOT EXISTS "orders" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
         "reference" character varying(50) NOT NULL,
         "customer_id" uuid NOT NULL,
@@ -120,12 +138,12 @@ export class InitialGasbotSchema1747914000000 implements MigrationInterface {
 
     // Explicit spatial GIST index on orders.delivery_location
     await queryRunner.query(`
-      CREATE INDEX "IDX_orders_delivery_location_gist" ON "orders" USING GIST ("delivery_location")
+      CREATE INDEX IF NOT EXISTS "IDX_orders_delivery_location_gist" ON "orders" USING GIST ("delivery_location")
     `);
 
     // === PAYMENTS TABLE ===
     await queryRunner.query(`
-      CREATE TABLE "payments" (
+      CREATE TABLE IF NOT EXISTS "payments" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
         "order_id" uuid NOT NULL,
         "status" "public"."payment_status_enum" NOT NULL DEFAULT 'UNPAID',
@@ -143,13 +161,13 @@ export class InitialGasbotSchema1747914000000 implements MigrationInterface {
 
     // Optional: additional indexes for common query patterns (performance)
     await queryRunner.query(
-      `CREATE INDEX "IDX_orders_status" ON "orders" ("status")`,
+      `CREATE INDEX IF NOT EXISTS "IDX_orders_status" ON "orders" ("status")`,
     );
     await queryRunner.query(
-      `CREATE INDEX "IDX_agents_status" ON "agents" ("status")`,
+      `CREATE INDEX IF NOT EXISTS "IDX_agents_status" ON "agents" ("status")`,
     );
     await queryRunner.query(
-      `CREATE INDEX "IDX_payments_status" ON "payments" ("status")`,
+      `CREATE INDEX IF NOT EXISTS "IDX_payments_status" ON "payments" ("status")`,
     );
   }
 

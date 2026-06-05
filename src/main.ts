@@ -118,19 +118,39 @@ async function bootstrap() {
     }
   }
 
-  // Run database migrations explicitly to ensure schema is ready before accepting requests
+  // Initialize the datasource and run migrations explicitly before the app starts
   const dataSource = app.get(DataSource);
-  if (dataSource.isInitialized) {
+  try {
+    if (!dataSource.isInitialized) {
+      await dataSource.initialize();
+      logger.log('Database connection initialized');
+    }
+
+    logger.log('Running database migrations...');
+    const appliedMigrations = await dataSource.runMigrations();
+
+    if (appliedMigrations.length > 0) {
+      logger.log(
+        `Database migrations completed successfully (${appliedMigrations.length} applied)`,
+      );
+    } else {
+      logger.log('Database migrations completed successfully (no pending migrations)');
+    }
+  } catch (migrationError: any) {
+    logger.error(`Database migration failed: ${migrationError.message}`);
+    if (migrationError.stack) {
+      logger.error(`Migration stack: ${migrationError.stack}`);
+    }
+
     try {
-      logger.log('Running database migrations...');
-      await dataSource.runMigrations();
-      logger.log('Database migrations completed successfully');
-    } catch (migrationError: any) {
-      logger.error(`Migration failed: ${migrationError.message}`);
-      if (migrationError.stack) {
-        logger.error(`Migration stack: ${migrationError.stack}`);
+      logger.warn('Attempting schema synchronization as a recovery fallback');
+      await dataSource.synchronize();
+      logger.warn('Schema synchronization completed');
+    } catch (syncError: any) {
+      logger.error(`Schema synchronization failed: ${syncError.message}`);
+      if (syncError.stack) {
+        logger.error(`Synchronization stack: ${syncError.stack}`);
       }
-      // Don't exit - let the app start anyway in case migrations already applied
     }
   }
 
