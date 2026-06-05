@@ -11,6 +11,7 @@ import { VisionService, GasCylinderAnalysis } from '@/vision/vision.service';
 import { MessageReceivedEvent } from '@/whatsapp/events/message-received.event';
 import { MatchingService } from '@/matching/matching.service';
 import { OrderService } from '@/order/order.service';
+import { SupplierRegistrationPolicy } from '../supplier-registration.policy';
 
 /**
  * ConversationProcessor
@@ -75,6 +76,7 @@ export class ConversationProcessor {
     private readonly visionService: VisionService,
     private readonly matchingService: MatchingService,
     private readonly orderService: OrderService,
+    private readonly supplierRegistrationPolicy: SupplierRegistrationPolicy,
     _eventEmitter: EventEmitter2, // consumed by @OnEvent decorator
   ) {}
 
@@ -84,6 +86,12 @@ export class ConversationProcessor {
   @OnEvent('message.received')
   async handleMessageReceived(event: MessageReceivedEvent): Promise<void> {
     const { from, content, type } = event;
+    const incomingText = `${content.text || ''} ${content.buttonTitle || ''}`.trim();
+
+    if (this.supplierRegistrationPolicy.isSupplierRegistrationIntent(incomingText)) {
+      await this.startSupplierRegistrationFlow(from, await this.conversationService.getSession(from));
+      return;
+    }
 
     // Ensure customer exists (race-condition safe)
     await this.customerService.findOrCreate(from);
@@ -122,6 +130,10 @@ export class ConversationProcessor {
 
       case ConversationState.CASH_ACKNOWLEDGEMENT:
         await this.handleCashAcknowledgement(from, session, content);
+        break;
+
+      case ConversationState.SUPPLIER_REGISTRATION:
+        await this.handleSupplierRegistrationFlow(from, session, content);
         break;
 
       default:
@@ -288,6 +300,100 @@ export class ConversationProcessor {
         await this.sendMainMenu(phone, lang);
       }
     }
+  }
+
+  private async startSupplierRegistrationFlow(
+    phone: string,
+    session: ConversationSession,
+  ): Promise<void> {
+    const lang = session.language || 'en';
+
+    await this.whatsappService.sendText(
+      phone,
+      this.supplierRegistrationPolicy.getWhatsAppOnlyMessage(lang),
+    );
+
+    await this.conversationService.setState(
+      phone,
+      ConversationState.SUPPLIER_REGISTRATION,
+      {
+        supplierRegistrationStep: 'name',
+        supplierRegistrationData: {},
+      },
+    );
+
+    await this.whatsappService.sendText(
+      phone,
+      this.supplierRegistrationPolicy.getStepPrompt(lang, 'name'),
+    );
+  }
+
+  private async handleSupplierRegistrationFlow(
+    phone: string,
+    session: ConversationSession,
+    content: MessageReceivedEvent['content'],
+  ): Promise<void> {
+    const lang = session.language || 'en';
+    const step = (session.data.supplierRegistrationStep as 'name' | 'phone' | 'gasType') || 'name';
+    const currentText = (content.text || '').trim();
+
+    if (!currentText) {
+      await this.whatsappService.sendText(
+        phone,
+        this.supplierRegistrationPolicy.getStepPrompt(lang, step),
+      );
+      return;
+    }
+
+    const nextData = {
+      ...(session.data.supplierRegistrationData || {}),
+      ...(step === 'name' ? { name: currentText } : {}),
+      ...(step === 'phone' ? { phone: currentText } : {}),
+      ...(step === 'gasType' ? { gasType: currentText } : {}),
+    };
+
+    if (step === 'name') {
+      await this.conversationService.setState(
+        phone,
+        ConversationState.SUPPLIER_REGISTRATION,
+        {
+          supplierRegistrationStep: 'phone',
+          supplierRegistrationData: nextData,
+        },
+      );
+      await this.whatsappService.sendText(
+        phone,
+        this.supplierRegistrationPolicy.getStepPrompt(lang, 'phone'),
+      );
+      return;
+    }
+
+    if (step === 'phone') {
+      await this.conversationService.setState(
+        phone,
+        ConversationState.SUPPLIER_REGISTRATION,
+        {
+          supplierRegistrationStep: 'gasType',
+          supplierRegistrationData: nextData,
+        },
+      );
+      await this.whatsappService.sendText(
+        phone,
+        this.supplierRegistrationPolicy.getStepPrompt(lang, 'gasType'),
+      );
+      return;
+    }
+
+    await this.conversationService.setState(phone, ConversationState.IDLE, {
+      supplierRegistrationData: nextData,
+    });
+
+    await this.whatsappService.sendText(
+      phone,
+      lang === 'fr'
+        ? `Merci ! Demande d’inscription fournisseur enregistrée pour ${nextData.name || 'le fournisseur'} — ${nextData.phone || ''} — ${nextData.gasType || ''}.`
+        : `Thanks! Supplier registration request received for ${nextData.name || 'the supplier'} — ${nextData.phone || ''} — ${nextData.gasType || ''}.`,
+    );
   }
 
   private async sendProductConfirmation(

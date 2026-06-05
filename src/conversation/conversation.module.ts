@@ -6,6 +6,7 @@ import { WhatsappModule } from '@/whatsapp/whatsapp.module';
 import { VisionModule } from '@/vision/vision.module';
 import { MatchingModule } from '@/matching/matching.module';
 import { OrderModule } from '@/order/order.module';
+import { SupplierRegistrationPolicy } from './supplier-registration.policy';
 
 @Module({
   imports: [
@@ -15,7 +16,7 @@ import { OrderModule } from '@/order/order.module';
     MatchingModule,
     OrderModule,
   ],
-  providers: [ConversationService, ConversationProcessor],
+  providers: [ConversationService, ConversationProcessor, SupplierRegistrationPolicy],
   exports: [ConversationService, ConversationProcessor],
 })
 export class ConversationModule {}
