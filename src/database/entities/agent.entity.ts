@@ -56,6 +56,10 @@ export class Agent {
   @JoinColumn({ name: 'zone_id' })
   zone?: Zone;
 
+  // Gas type supplied by this agent (for gas suppliers)
+  @Column({ type: 'varchar', length: 50, nullable: true, name: 'gas_type' })
+  gasType?: string;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt!: Date;
 

@@ -10,14 +10,14 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { GeoService } from '@/geo/geo.service';
 import { OrderStatus } from '@/common/enums/order-status.enum';
-import { DispatchService } from '@/dispatch/dispatch.service';
+import { DispatchService, DispatchPayload } from '@/dispatch/dispatch.service';
 import { RedisService } from '@/redis/redis.service';
 import {
   StartCascadeJob,
   TimeoutCascadeJob,
 } from './interfaces/matching-job.interface';
 
-const CASCADE_TTL = 30 * 60; // 30 minutes max cascade lifetime
+const CASCADE_TTL = 30 * 60;
 
 @Processor('driver-matching')
 @Injectable()
@@ -53,38 +53,34 @@ export class MatchingProcessor extends WorkerHost {
     throw new Error(`Unknown job type: ${job.name}`);
   }
 
-  // === START CASCADE ===
   private async handleStartCascade(data: StartCascadeJob): Promise<void> {
     const { orderId, initialRadiusMeters, maxRadiusMeters } = data;
 
-    // Get delivery coordinates
     const [orderRow] = await this.dataSource.query(
-      `SELECT ST_AsText(delivery_location) as point FROM orders WHERE id = $1`,
+      `SELECT ST_AsText(delivery_location) as point, total_xaf FROM orders WHERE id = $1`,
       [orderId],
     );
 
     if (!orderRow?.point) {
-      await this.markWaitingForAgent(orderId);
+      await this.markWaitingForSupplier(orderId);
       return;
     }
 
     const match = orderRow.point.match(/POINT\(([^ ]+) ([^)]+)\)/);
     if (!match) {
-      await this.markWaitingForAgent(orderId);
+      await this.markWaitingForSupplier(orderId);
       return;
     }
 
     const lng = parseFloat(match[1]);
     const lat = parseFloat(match[2]);
 
-    // First attempt: 5km
     let candidates = await this.geoService.findNearestAgents(
       lat,
       lng,
       initialRadiusMeters,
     );
 
-    // Second attempt: 10km if needed
     if (candidates.length === 0) {
       candidates = await this.geoService.findNearestAgents(
         lat,
@@ -94,11 +90,12 @@ export class MatchingProcessor extends WorkerHost {
     }
 
     if (candidates.length === 0) {
-      await this.markWaitingForAgent(orderId);
+      await this.markWaitingForSupplier(orderId);
       return;
     }
 
-    // Store candidate list + current index in Redis for the cascade
+    candidates = candidates.sort((a, b) => a.distanceMeters - b.distanceMeters);
+
     const cascadeKey = `matching:cascade:${orderId}`;
     const agentIds = candidates.map((c) => c.agent.id);
 
@@ -108,66 +105,68 @@ export class MatchingProcessor extends WorkerHost {
       JSON.stringify({ agentIds, currentIndex: 0 }),
     );
 
-    // Start with the first (closest) agent
-    await this.offerToAgent(orderId, agentIds[0], 0);
+    const firstAgent = candidates[0];
+    await this.offerToSupplier(orderId, firstAgent.agent.id, 0, firstAgent.distanceMeters, orderRow.total_xaf);
   }
 
-  // === OFFER TO SINGLE AGENT ===
-  private async offerToAgent(
+  private async offerToSupplier(
     orderId: string,
     agentId: string,
     attemptIndex: number,
+    distanceMeters: number,
+    totalXaf: number,
   ): Promise<void> {
-    // Fetch agent phone
+    // Fetch order details including bottle image if any
+    const [orderDetails] = await this.dataSource.query(
+      `SELECT o.total_xaf, o.bottle_image_media_id FROM orders o WHERE o.id = $1`,
+      [orderId],
+    );
+
     const [agentRow] = await this.dataSource.query(
-      `SELECT phone, full_name FROM agents WHERE id = $1`,
+      `SELECT phone FROM agents WHERE id = $1`,
       [agentId],
     );
 
     if (!agentRow) {
-      await this.advanceToNextAgent(orderId, attemptIndex);
+      await this.advanceToNextSupplier(orderId, attemptIndex);
       return;
     }
 
     const agentPhone = agentRow.phone;
 
-    // Send rich conversational dispatch offer via DispatchService
-    await this.dispatchService.sendAssignmentOffer(
-      agentPhone,
-      {
-        orderReference: orderId.slice(0, 8),
-        gasType: 'Standard Gas Cylinder',
-        sizeKg: 12,
-        amountXaf: 8500,
-        estimatedDistanceMeters: 4200,
-      },
-      orderId,
-    );
+    const payload: DispatchPayload = {
+      orderReference: orderId.slice(0, 8),
+      gasType: 'Gas Cylinder',
+      sizeKg: 12,
+      amountXaf: totalXaf,
+      estimatedDistanceMeters: distanceMeters,
+      bottleImageMediaId: orderDetails?.bottle_image_media_id,
+    };
 
-    this.logger.log(
-      `Rich dispatch offer sent to agent ${agentId} for order ${orderId}`,
-    );
+    try {
+      await this.dispatchService.sendAssignmentOffer(agentPhone, payload, orderId);
+      this.logger.log(`Supplier notification sent to ${agentId} (${distanceMeters}m away) for order ${orderId}`);
+    } catch (error: any) {
+      await this.advanceToNextSupplier(orderId, attemptIndex);
+      return;
+    }
 
-    // Schedule 90-second timeout job
     const timeoutData: TimeoutCascadeJob = {
       orderId,
       agentId,
       attemptIndex,
     };
 
-    // Add delayed job to the same queue
     await this.matchingQueue.add('TIMEOUT_CASCADE', timeoutData, {
-      delay: 90_000, // exactly 90 seconds
+      delay: 90_000,
       removeOnComplete: true,
       removeOnFail: 50,
     });
   }
 
-  // === TIMEOUT HANDLER ===
   private async handleTimeout(data: TimeoutCascadeJob): Promise<void> {
     const { orderId, agentId, attemptIndex } = data;
 
-    // Check if this agent is still the current assignee
     const [orderRow] = await this.dataSource.query(
       `SELECT status, agent_id FROM orders WHERE id = $1`,
       [orderId],
@@ -175,22 +174,23 @@ export class MatchingProcessor extends WorkerHost {
 
     if (
       !orderRow ||
-      orderRow.status !== OrderStatus.AGENT_ASSIGNED ||
+      orderRow.status !== OrderStatus.SUPPLIER_ASSIGNED ||
       orderRow.agent_id !== agentId
     ) {
-      // Already moved on or accepted by someone else
       return;
     }
 
-    this.logger.warn(
-      `90s timeout reached for agent ${agentId} on order ${orderId}`,
-    );
+    this.logger.warn(`90s timeout reached for supplier ${agentId} on order ${orderId}`);
 
-    await this.advanceToNextAgent(orderId, attemptIndex);
+    const [agent] = await this.dataSource.query(`SELECT phone FROM agents WHERE id = $1`, [agentId]);
+    if (agent) {
+      await this.dispatchService.sendDeclineTimeout(agent.phone, orderId.slice(0, 8));
+    }
+
+    await this.advanceToNextSupplier(orderId, attemptIndex);
   }
 
-  // === ADVANCE TO NEXT AGENT IN CASCADE ===
-  private async advanceToNextAgent(
+  private async advanceToNextSupplier(
     orderId: string,
     _currentAttemptIndex: number,
   ): Promise<void> {
@@ -198,7 +198,7 @@ export class MatchingProcessor extends WorkerHost {
     const raw = await this.getRedis().get(cascadeKey);
 
     if (!raw) {
-      await this.markWaitingForAgent(orderId);
+      await this.markWaitingForSupplier(orderId);
       return;
     }
 
@@ -208,33 +208,41 @@ export class MatchingProcessor extends WorkerHost {
 
     if (nextIndex >= agentIds.length) {
       await this.getRedis().del(cascadeKey);
-      await this.markWaitingForAgent(orderId);
+      await this.markWaitingForSupplier(orderId);
       return;
     }
 
-    // Update index in Redis
     await this.getRedis().setex(
       cascadeKey,
       CASCADE_TTL,
       JSON.stringify({ agentIds, currentIndex: nextIndex }),
     );
 
-    const nextAgentId = agentIds[nextIndex];
-    await this.offerToAgent(orderId, nextAgentId, nextIndex);
+    const [nextAgent] = await this.dataSource.query(
+      `SELECT ST_Distance(a.location, (SELECT delivery_location FROM orders WHERE id = $1)) AS distance_meters FROM agents a WHERE a.id = $2`,
+      [orderId, agentIds[nextIndex]],
+    );
+
+    const nextDistance = nextAgent ? Math.round(parseFloat(nextAgent.distance_meters)) : 0;
+    const [orderDetails] = await this.dataSource.query(`SELECT total_xaf FROM orders WHERE id = $1`, [orderId]);
+    await this.offerToSupplier(orderId, agentIds[nextIndex], nextIndex, nextDistance, orderDetails?.total_xaf || 0);
   }
 
-  // === FINAL STATE WHEN NO AGENTS AVAILABLE ===
-  private async markWaitingForAgent(orderId: string): Promise<void> {
+  private async markWaitingForSupplier(orderId: string): Promise<void> {
     await this.dataSource.query(
       `UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2`,
-      [OrderStatus.WAITING_FOR_AGENT, orderId],
+      [OrderStatus.WAITING_FOR_SUPPLIER, orderId],
     );
 
-    this.logger.log(
-      `Order ${orderId} moved to WAITING_FOR_AGENT (no drivers found)`,
-    );
+    this.logger.log(`Order ${orderId} moved to WAITING_FOR_SUPPLIER (no suppliers found)`);
 
-    // TODO: notify customer that we are looking for a driver
+    const [order] = await this.dataSource.query(`SELECT customer_id FROM orders WHERE id = $1`, [orderId]);
+    if (order) {
+      const [customer] = await this.dataSource.query(`SELECT phone FROM customers WHERE id = $1`, [order.customer_id]);
+      if (customer) {
+        await this.dispatchService.sendNoSuppliersAvailable(customer.phone, orderId.slice(0, 8));
+      }
+    }
   }
 
   @OnWorkerEvent('failed')

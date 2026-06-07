@@ -29,29 +29,36 @@ export class OrderService {
     }
 
     const location = sessionData.location;
-    if (
-      !location ||
-      typeof location.lat !== 'number' ||
-      typeof location.lng !== 'number'
-    ) {
+    if (!location) {
       throw new Error('No valid location in session');
     }
 
     const totalXaf = product.priceXaf + 1500;
 
+    let lat = location.lat || 0;
+    let lng = location.lng || 0;
+    if (location.manual) {
+      lat = 0;
+      lng = 0;
+      this.logger.warn(`Manual location stored as text: ${location.manual}`);
+    }
+
     const reference = `GB-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
+    const bottleImageMediaId = sessionData.bottleImageMediaId || null;
+
     await this.dataSource.query(
-      `INSERT INTO orders (reference, customer_id, delivery_location, total_xaf, status, created_at, updated_at)
-       VALUES ($1, $2, ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography, $5, $6, NOW(), NOW())
+      `INSERT INTO orders (reference, customer_id, delivery_location, total_xaf, status, bottle_image_media_id, created_at, updated_at)
+       VALUES ($1, $2, ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography, $5, $6, $7, NOW(), NOW())
        RETURNING *`,
       [
         reference,
         customer.id,
-        location.lng,
-        location.lat,
+        lng,
+        lat,
         totalXaf,
         OrderStatus.CASH_ACKNOWLEDGED,
+        bottleImageMediaId,
       ],
     );
 

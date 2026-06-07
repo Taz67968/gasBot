@@ -9,7 +9,7 @@ import { DispatchService } from '@/dispatch/dispatch.service';
 
 /**
  * MatchingResponseListener
- * Listens for WhatsApp button replies from agents (Accept / Decline) during the cascade.
+ * Listens for WhatsApp button replies from suppliers (Accept / Decline) during the cascade.
  * Uses row-level locking (FOR UPDATE) to guarantee exactly-once assignment.
  */
 @Injectable()
@@ -24,12 +24,12 @@ export class MatchingResponseListener {
   ) {}
 
   @OnEvent('message.received')
-  async handleAgentResponse(event: MessageReceivedEvent): Promise<void> {
+  async handleSupplierResponse(event: MessageReceivedEvent): Promise<void> {
     const { from, content } = event;
 
     if (!content.buttonTitle) return;
 
-    const buttonId = content.buttonTitle; // we use the button id as the payload
+    const buttonId = content.buttonTitle;
 
     if (buttonId.startsWith('accept_')) {
       const orderId = buttonId.replace('accept_', '');
@@ -44,7 +44,6 @@ export class MatchingResponseListener {
     agentPhone: string,
     orderId: string,
   ): Promise<void> {
-    // We need the agent id from the phone
     const [agentRow] = await this.dataSource.query(
       `SELECT id FROM agents WHERE phone = $1`,
       [agentPhone],
@@ -64,7 +63,6 @@ export class MatchingResponseListener {
     await queryRunner.startTransaction();
 
     try {
-      // === CRITICAL SECTION: Row-level lock ===
       const [lockedOrder] = await queryRunner.query(
         `SELECT id, status, agent_id FROM orders WHERE id = $1 FOR UPDATE`,
         [orderId],
@@ -80,13 +78,13 @@ export class MatchingResponseListener {
       }
 
       if (
-        lockedOrder.status !== OrderStatus.CASH_ACKNOWLEDGED ||
+        lockedOrder.status !== OrderStatus.SUPPLIER_ASSIGNED ||
         lockedOrder.agent_id !== null
       ) {
         await queryRunner.rollbackTransaction();
         await this.whatsappService.sendText(
           agentPhone,
-          'Sorry — this delivery was already assigned to another driver or the request expired.',
+          'Sorry — this request was already assigned to another supplier or expired.',
         );
         return;
       }
@@ -96,12 +94,12 @@ export class MatchingResponseListener {
         `UPDATE orders 
          SET agent_id = $1, status = $2, updated_at = NOW() 
          WHERE id = $3`,
-        [agentId, OrderStatus.AGENT_ASSIGNED, orderId],
+        [agentId, OrderStatus.SUPPLIER_ACCEPTED, orderId],
       );
 
       await queryRunner.commitTransaction();
 
-      this.logger.log(`Agent ${agentId} successfully claimed order ${orderId}`);
+      this.logger.log(`Supplier ${agentId} accepted order ${orderId}`);
 
       // Fetch delivery location and amount for rich map link
       const [orderDetails] = await this.dataSource.query(
@@ -123,11 +121,27 @@ export class MatchingResponseListener {
         );
       }
 
-      // TODO: Notify customer that a driver has been assigned (via WhatsApp)
+      // Notify customer
+      const [order] = await this.dataSource.query(
+        `SELECT customer_id FROM orders WHERE id = $1`,
+        [orderId],
+      );
+      if (order) {
+        const [customer] = await this.dataSource.query(
+          `SELECT phone FROM customers WHERE id = $1`,
+          [order.customer_id],
+        );
+        if (customer) {
+          await this.whatsappService.sendText(
+            customer.phone,
+            `✅ A supplier has accepted your order and is on the way!`,
+          );
+        }
+      }
     } catch (error: any) {
       await queryRunner.rollbackTransaction();
       this.logger.error(
-        `Failed to claim order ${orderId} for agent ${agentId}: ${error.message}`,
+        `Failed to claim order ${orderId} for supplier ${agentId}: ${error.message}`,
       );
 
       await this.whatsappService.sendText(
@@ -152,17 +166,18 @@ export class MatchingResponseListener {
 
     const agentId = agentRow.id;
 
-    // Simply advance the cascade (the timeout logic or a direct call)
-    // For immediate decline we can directly trigger advance via a service method.
-    // For now we just log — the 90s timeout will also handle it, but immediate decline is better UX.
-    this.logger.log(`Agent ${agentId} declined order ${orderId}`);
-
-    // We can publish an internal event or directly call MatchingProcessor logic.
-    // For simplicity in this implementation we let the timeout job also pick it up,
-    // but in production you would inject MatchingService and call advanceToNextAgent.
-    await this.whatsappService.sendText(
-      agentPhone,
-      'Thank you. The request has been passed to the next driver.',
+    // Check if order is still assigned to this agent
+    const [order] = await this.dataSource.query(
+      `SELECT status, agent_id FROM orders WHERE id = $1`,
+      [orderId],
     );
+
+    if (order?.status === OrderStatus.SUPPLIER_ASSIGNED && order?.agent_id === agentId) {
+      // Advance immediately on decline
+      await this.whatsappService.sendText(
+        agentPhone,
+        'Thank you. The request has been passed to the next supplier.',
+      );
+    }
   }
 }

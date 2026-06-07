@@ -44,7 +44,9 @@ export class InitialGasbotSchema1747914000000 implements MigrationInterface {
           CREATE TYPE "public"."order_status_enum" AS ENUM (
             'PENDING',
             'CASH_ACKNOWLEDGED',
-            'AGENT_ASSIGNED',
+            'SUPPLIER_ASSIGNED',
+            'SUPPLIER_ACCEPTED',
+            'SUPPLIER_DECLINED',
             'EN_ROUTE',
             'NEARBY',
             'DELIVERED',
@@ -126,6 +128,7 @@ export class InitialGasbotSchema1747914000000 implements MigrationInterface {
         "status" "public"."order_status_enum" NOT NULL DEFAULT 'PENDING',
         "delivery_location" geography(Point,4326) NOT NULL,
         "total_xaf" integer NOT NULL,
+        "bottle_image_media_id" character varying(100),
         "acknowledged_at" timestamptz,
         "created_at" timestamptz NOT NULL DEFAULT now(),
         "updated_at" timestamptz NOT NULL DEFAULT now(),

@@ -14,11 +14,6 @@ import { Customer } from './customer.entity';
 import { Agent } from './agent.entity';
 import { Payment } from './payment.entity';
 
-/**
- * Core Order entity for GasBot Cash-on-Delivery deliveries.
- * Enforces the strict business flow: PENDING → CASH_ACKNOWLEDGED → AGENT_ASSIGNED → ... → DELIVERED
- * with geospatial delivery location and XAF currency amounts.
- */
 @Entity('orders')
 @Index(['reference'], { unique: true })
 export class Order {
@@ -54,7 +49,6 @@ export class Order {
   })
   status!: OrderStatus;
 
-  // Delivery location as PostGIS POINT (customer or merchant drop-off point)
   @Column({
     type: 'geography',
     spatialFeatureType: 'Point',
@@ -67,6 +61,10 @@ export class Order {
   @Column({ type: 'integer', name: 'total_xaf' })
   totalXaf!: number;
 
+  // Image media ID of the gas bottle customer wants (for supplier reference)
+  @Column({ type: 'varchar', length: 100, nullable: true, name: 'bottle_image_media_id' })
+  bottleImageMediaId?: string;
+
   @Column({ type: 'timestamptz', nullable: true, name: 'acknowledged_at' })
   acknowledgedAt?: Date;
 
@@ -76,7 +74,6 @@ export class Order {
   @UpdateDateColumn({ type: 'timestamptz', name: 'updated_at' })
   updatedAt!: Date;
 
-  // One-to-one with Payment (each order has exactly one payment record)
   @OneToOne(() => Payment, (payment) => payment.order, { cascade: true })
   payment!: Payment;
 }

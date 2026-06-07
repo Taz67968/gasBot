@@ -1,33 +1,22 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { WhatsappService } from '@/whatsapp/whatsapp.service';
 
-/**
- * Rich dispatch payload sent to a driver when a new order is offered.
- */
 export interface DispatchPayload {
   orderReference: string;
-  gasType: string; // e.g. "12kg Standard Cylinder"
+  gasType: string;
   sizeKg: number;
-  amountXaf: number; // Cash to collect on delivery
+  amountXaf: number;
   estimatedDistanceMeters?: number;
   customerArea?: string;
+  bottleImageMediaId?: string;
 }
 
-/**
- * DispatchService
- * Interactive communication service responsible for all driver-facing
- * conversational dispatch flows (assignment offers and acceptance confirmations).
- */
 @Injectable()
 export class DispatchService {
   private readonly logger = new Logger(DispatchService.name);
 
   constructor(private readonly whatsappService: WhatsappService) {}
 
-  /**
-   * Sends a rich, actionable assignment notification to a driver via WhatsApp.
-   * Includes all critical operational details + clear Accept/Decline buttons.
-   */
   async sendAssignmentOffer(
     agentPhone: string,
     payload: DispatchPayload,
@@ -40,22 +29,24 @@ export class DispatchService {
       amountXaf,
       estimatedDistanceMeters,
       customerArea,
+      bottleImageMediaId,
     } = payload;
 
     const distanceText = estimatedDistanceMeters
-      ? `${(estimatedDistanceMeters / 1000).toFixed(1)} km`
+      ? `${(estimatedDistanceMeters / 1000).toFixed(1)} km away`
       : 'calculating...';
 
     const bodyText = [
-      `🚚 *New GasBot Assignment*`,
+      `🚚 *New Gas Request*`,
       ``,
       `📦 Order: *${orderReference}*`,
       `🛢️ Gas: *${gasType}* (${sizeKg}kg)`,
-      `💰 Collect on delivery: *${amountXaf.toLocaleString()} XAF*`,
+      `💰 Total: *${amountXaf.toLocaleString()} XAF* (includes delivery fee)`,
       `📍 Distance: *${distanceText}*`,
       customerArea ? `📌 Area: ${customerArea}` : '',
+      bottleImageMediaId ? `🖼️ Bottle Image: ${bottleImageMediaId}` : '',
       ``,
-      `Please respond quickly — assignment expires in 90 seconds.`,
+      `Reply within 90 seconds. Tap Accept to confirm or Decline to pass.`,
     ]
       .filter(Boolean)
       .join('\n');
@@ -67,7 +58,7 @@ export class DispatchService {
       ]);
 
       this.logger.log(
-        `Rich dispatch offer sent to ${agentPhone} for order ${orderReference}`,
+        `Supplier notification sent to ${agentPhone} for order ${orderReference}`,
       );
     } catch (error: any) {
       this.logger.error(
@@ -77,17 +68,12 @@ export class DispatchService {
     }
   }
 
-  /**
-   * Sent immediately after a driver successfully accepts an assignment.
-   * Contains a direct Google Maps navigation link using the order's delivery coordinates.
-   */
   async sendAcceptanceConfirmationWithMap(
     agentPhone: string,
     orderReference: string,
-    deliveryLocationWkt: string, // e.g. "POINT(11.5021 3.8480)"
+    deliveryLocationWkt: string,
     amountXaf: number,
   ): Promise<void> {
-    // Extract lat/lng from PostGIS WKT format "POINT(lng lat)"
     const match = deliveryLocationWkt.match(/POINT\(([^ ]+) ([^)]+)\)/);
     if (!match) {
       this.logger.warn(
@@ -109,7 +95,7 @@ export class DispatchService {
       `✅ *Assignment Confirmed*`,
       ``,
       `Order: *${orderReference}*`,
-      `Cash on delivery: *${amountXaf.toLocaleString()} XAF*`,
+      `💰 Cash on delivery: *${amountXaf.toLocaleString()} XAF*`,
       ``,
       `🗺️ *Navigate to customer:*`,
       mapsUrl,
@@ -127,5 +113,19 @@ export class DispatchService {
         `Failed to send map link to ${agentPhone}: ${error.message}`,
       );
     }
+  }
+
+  async sendDeclineTimeout(phone: string, orderReference: string): Promise<void> {
+    await this.whatsappService.sendText(
+      phone,
+      `⏰ You took too long to respond for order ${orderReference}. The request has been passed to another supplier.`,
+    );
+  }
+
+  async sendNoSuppliersAvailable(phone: string, orderReference: string): Promise<void> {
+    await this.whatsappService.sendText(
+      phone,
+      `⚠️ No suppliers found for order ${orderReference}. We'll notify you when one becomes available.`,
+    );
   }
 }
