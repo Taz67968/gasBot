@@ -20,11 +20,6 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ConfigLoader } from '@/config/configuration';
 import { MessageReceivedEvent } from './events/message-received.event';
 
-/**
- * WhatsappController
- * Handles Meta WhatsApp Cloud API webhooks (inbound messages + verification).
- * Note: Signature verification is skipped as per configuration (no app secret used).
- */
 @Controller('webhook/whatsapp')
 export class WhatsappController {
   private readonly logger = new Logger(WhatsappController.name);
@@ -37,10 +32,6 @@ export class WhatsappController {
     this.verifyToken = config.whatsappVerifyToken;
   }
 
-  /**
-   * GET /webhook/whatsapp
-   * Hub verification handshake required by Meta during app setup.
-   */
   @Get()
   verifyWebhook(
     @Query('hub.mode') mode: string,
@@ -50,7 +41,7 @@ export class WhatsappController {
   ): void {
     const endpoint = 'GET /webhook/whatsapp';
     if (mode === 'subscribe' && token === this.verifyToken) {
-      this.logger.log(`✅ [${endpoint}] Webhook verified successfully`);
+      this.logger.log(`[${endpoint}] Webhook verified successfully`);
       console.log(
         `[${new Date().toISOString()}] ${endpoint} - 200 OK - Webhook verified`,
       );
@@ -59,7 +50,7 @@ export class WhatsappController {
     }
 
     this.logger.warn(
-      `❌ [${endpoint}] Webhook verification failed - invalid token or mode`,
+      `[${endpoint}] Webhook verification failed - invalid token or mode`,
     );
     console.log(
       `[${new Date().toISOString()}] ${endpoint} - 403 FORBIDDEN - Verification failed`,
@@ -67,22 +58,13 @@ export class WhatsappController {
     res.status(HttpStatus.FORBIDDEN).send('Verification failed');
   }
 
-  /**
-   * POST /webhook/whatsapp
-   * Receives all inbound messages, status updates, etc.
-   * - Uses raw Buffer body (attached by express.raw middleware in main.ts)
-   * - Signature verification is skipped (no app secret used)
-   * - Normalizes and emits typed domain events
-   */
   @Post()
   @HttpCode(HttpStatus.OK)
-  // eslint-disable-next-line @typescript-eslint/require-await
   async handleIncomingMessage(
     @Req() req: WhatsappRequest,
     @Res() res: Response,
   ): Promise<void> {
     const requestId = req.requestId || 'unknown';
-    // raw body populated by express.raw middleware
     const rawBody: Buffer | undefined = req.body;
 
     this.logger.log(
@@ -100,11 +82,6 @@ export class WhatsappController {
       return;
     }
 
-    // Note: Signature verification is skipped as no app secret is used.
-    // In production, you should verify the webhook signature using the app secret.
-    // For this setup, we proceed with processing the webhook.
-
-    // === Parse and Process ===
     try {
       const payload: any = JSON.parse(rawBody.toString('utf8'));
 
@@ -135,7 +112,10 @@ export class WhatsappController {
                 content.text = msg.text?.body;
                 break;
               case 'button':
-                content.buttonTitle = msg.button?.text || msg.button?.payload;
+              case 'interactive':
+                // Handle both button types - interactive contains button_reply
+                content.buttonTitle = msg.button?.text || msg.button?.payload || 
+                  msg.interactive?.button_reply?.title || msg.interactive?.button_reply?.id;
                 break;
               case 'list':
               case 'list_reply':
@@ -179,7 +159,6 @@ export class WhatsappController {
         `[${new Date().toISOString()}] POST /webhook/whatsapp - 200 OK - Processed ${processedMessages} message(s)`,
       );
 
-      // Always acknowledge quickly to Meta (within 20s)
       res.status(HttpStatus.OK).send('EVENT_RECEIVED');
       return;
     } catch (err: any) {
@@ -187,7 +166,6 @@ export class WhatsappController {
       console.log(
         `[${new Date().toISOString()}] POST /webhook/whatsapp - 200 OK - Error processing: ${err.message}`,
       );
-      // Still return 200 to avoid Meta retry storm
       res.status(HttpStatus.OK).send('EVENT_RECEIVED');
     }
   }

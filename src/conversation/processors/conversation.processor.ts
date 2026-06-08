@@ -205,7 +205,7 @@ export class ConversationProcessor {
     const catalog = this.catalogs[lang] || this.catalogs['en'];
 
     if (content.buttonTitle) {
-      const selected = catalog.find((p) => p.name.includes(content.buttonTitle || ''));
+      const selected = catalog.find((p) => p.sku === content.buttonTitle || p.name.includes(content.buttonTitle || ''));
       if (selected) {
         await this.conversationService.setState(phone, ConversationState.CONFIRM_PRODUCT, {
           selectedProduct: selected,
