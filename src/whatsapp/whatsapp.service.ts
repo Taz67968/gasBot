@@ -55,6 +55,64 @@ export class WhatsappService {
   }
 
   /**
+   * Mark an inbound message as read so the sender sees blue double-ticks (✓✓).
+   * @param messageId  The wamid of the inbound message (msg.id from the webhook payload)
+   */
+  async markMessageAsRead(messageId: string): Promise<void> {
+    try {
+      await this.http.post(`/${this.phoneNumberId}/messages`, {
+        messaging_product: 'whatsapp',
+        status: 'read',
+        message_id: messageId,
+      });
+      this.logger.debug(`Marked message ${messageId} as read (blue ticks)`);
+    } catch (error: any) {
+      // Non-fatal — log and continue
+      this.logger.warn(
+        `Could not mark message ${messageId} as read: ${error.response?.data?.error?.message || error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Show a "typing…" indicator to the user.
+   *
+   * Uses the WhatsApp Cloud API statuses endpoint with action "typing_on".
+   * The indicator disappears automatically after ~25 seconds or when the next
+   * message is sent — no need to explicitly turn it off.
+   *
+   * NOTE: This feature requires the "typing_indicator" capability to be enabled
+   * in your WhatsApp Business Account.  If the API returns an error it is
+   * silently swallowed so the reply flow is never blocked.
+   *
+   * @param to  Recipient phone in E.164 format (will be normalised)
+   */
+  async sendTypingIndicator(to: string): Promise<void> {
+    const formattedTo = formatE164(to);
+    try {
+      // The WhatsApp Cloud API supports a typing indicator via the
+      // /messages endpoint with type "text" and an explicit statuses action.
+      // As an alternative some accounts support the dedicated statuses call:
+      //   POST /{phone-number-id}/messages
+      //   { messaging_product, recipient_type, to, type: "typing_indicator",
+      //     typing_indicator: { type: "text" } }
+      await this.http.post(`/${this.phoneNumberId}/messages`, {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: formattedTo,
+        type: 'typing_indicator',
+        typing_indicator: { type: 'text' },
+      });
+      this.logger.debug(`Typing indicator sent to ${formattedTo}`);
+    } catch (error: any) {
+      // Non-fatal — not all tiers expose this endpoint yet
+      this.logger.warn(
+        `Could not send typing indicator to ${formattedTo}: ${error.response?.data?.error?.message || error.message}`,
+      );
+    }
+  }
+
+  /**
    * Send a simple text message.
    */
   async sendText(to: string, text: string): Promise<void> {

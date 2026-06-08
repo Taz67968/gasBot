@@ -43,10 +43,29 @@ export class ConversationProcessor {
     _eventEmitter: EventEmitter2,
   ) {}
 
+  /**
+   * Small helper that resolves after `ms` milliseconds.
+   * Used to hold back the reply so the user sees the typing indicator first.
+   */
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
   @OnEvent('message.received')
   async handleMessageReceived(event: MessageReceivedEvent): Promise<void> {
-    const { from, content, type } = event;
+    const { from, messageId, content, type } = event;
     const incomingText = `${content.text || ''} ${content.buttonTitle || ''}`.trim();
+
+    // ── Step 1: Mark the user's message as read → blue double-ticks ──────────
+    // ── Step 2: Show typing indicator concurrently ────────────────────────────
+    await Promise.all([
+      this.whatsappService.markMessageAsRead(messageId),
+      this.whatsappService.sendTypingIndicator(from),
+    ]);
+
+    // ── Step 3: Brief pause so the typing bubble is visible before the reply ──
+    // Adjust the delay (ms) to match the expected response time of your bot.
+    await this.delay(1500);
 
     if (this.supplierRegistrationPolicy.isSupplierRegistrationIntent(incomingText)) {
       await this.startSupplierRegistrationFlow(from, await this.conversationService.getSession(from));
