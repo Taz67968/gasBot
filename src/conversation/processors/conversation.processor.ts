@@ -12,6 +12,9 @@ import { MessageReceivedEvent } from '@/whatsapp/events/message-received.event';
 import { MatchingService } from '@/matching/matching.service';
 import { OrderService } from '@/order/order.service';
 import { SupplierRegistrationPolicy } from '../supplier-registration.policy';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
+import { AgentStatus } from '@/common/enums/agent-status.enum';
 
 @Injectable()
 export class ConversationProcessor {
@@ -41,7 +44,8 @@ export class ConversationProcessor {
     private readonly orderService: OrderService,
     private readonly supplierRegistrationPolicy: SupplierRegistrationPolicy,
     _eventEmitter: EventEmitter2,
-  ) {}
+    @InjectDataSource() private readonly dataSource: DataSource,
+  ) { }
 
   /**
    * Small helper that resolves after `ms` milliseconds.
@@ -400,9 +404,33 @@ export class ConversationProcessor {
       supplierRegistrationData: nextData,
     });
 
+    // ── Persist supplier to agents table so the matching cascade can find them ──
+    // Use the WhatsApp phone (E.164 without +) as the authoritative phone number.
+    // The supplier's own stated phone is stored as a display name fallback.
+    const agentPhone = phone; // always use the WA sender's number for delivery
+    const fullName = nextData.name || 'Supplier';
+    const gasType = nextData.gasType || null;
+
+    try {
+      await this.dataSource.query(
+        `INSERT INTO agents (phone, full_name, status, gas_type, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, NOW(), NOW())
+         ON CONFLICT (phone) DO UPDATE
+           SET full_name = EXCLUDED.full_name,
+               status    = $3,
+               gas_type  = EXCLUDED.gas_type,
+               updated_at = NOW()`,
+        [agentPhone, fullName, AgentStatus.ACTIVE, gasType],
+      );
+      this.logger.log(`Supplier agent upserted in DB: ${agentPhone} (${fullName})`);
+    } catch (dbErr: any) {
+      this.logger.error(`Failed to persist supplier ${agentPhone} to DB: ${dbErr.message}`);
+      // Non-fatal: still confirm registration to the user
+    }
+
     await this.whatsappService.sendText(phone, lang === 'fr'
-      ? `Merci ! Demande d'inscription fournisseur enregistrée pour ${nextData.name || 'le fournisseur'} — ${nextData.phone || ''} — ${nextData.gasType || ''}.`
-      : `Thanks! Supplier registration request received for ${nextData.name || 'the supplier'} — ${nextData.phone || ''} — ${nextData.gasType || ''}.`);
+      ? `✅ Inscription confirmée, ${fullName} ! Vous recevrez des notifications WhatsApp dès qu'un client commande du gaz dans votre zone.`
+      : `✅ Registration confirmed, ${fullName}! You will receive WhatsApp notifications whenever a customer orders gas in your area.`);
   }
 
   private async sendProductConfirmation(
@@ -537,7 +565,7 @@ export class ConversationProcessor {
   ): Promise<void> {
     const lang = session.language;
 
-    if (content.buttonTitle?.includes('Confirm') || content.buttonTitle?.includes('Pay Cash')) {
+    if (content.buttonTitle?.includes('Confirm') || content.buttonTitle?.includes('Pay Cash') || content.buttonTitle?.includes('Confirmer')) {
       let orderId = session.data.orderId;
 
       if (!orderId) {
@@ -612,13 +640,11 @@ export class ConversationProcessor {
   ): Promise<void> {
     const lang = session.language;
     const text = lang === 'fr'
-      ? 'Mode de paiement : Paiement en espèces à la livraison (Cash on Delivery)'
+      ? 'Mode de paiement : Paiement en espèces à la livraison'
       : 'Payment method: Cash on Delivery';
 
     await this.whatsappService.sendInteractiveButtons(phone, text, [
-      { id: 'pay_confirm', title: lang === 'fr'
-        ? 'Confirmer la commande (Paiement à la livraison)'
-        : 'Confirm Order (Pay Cash on Delivery)' },
+      { id: 'pay_confirm', title: lang === 'fr' ? 'Confirmer' : 'Confirm' },
       { id: 'cancel', title: lang === 'fr' ? 'Annuler' : 'Cancel' },
     ]);
   }

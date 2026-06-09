@@ -10,12 +10,14 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { GeoService } from '@/geo/geo.service';
 import { OrderStatus } from '@/common/enums/order-status.enum';
+import { AgentStatus } from '@/common/enums/agent-status.enum';
 import { DispatchService, DispatchPayload } from '@/dispatch/dispatch.service';
 import { RedisService } from '@/redis/redis.service';
 import {
   StartCascadeJob,
   TimeoutCascadeJob,
 } from './interfaces/matching-job.interface';
+import { Agent } from '@/database/entities/agent.entity';
 
 const CASCADE_TTL = 30 * 60;
 
@@ -89,9 +91,29 @@ export class MatchingProcessor extends WorkerHost {
       );
     }
 
+    // ── Fallback: notify ALL active agents who have not yet set their GPS location ──
+    // This covers suppliers who registered via the WhatsApp chat and have no
+    // location entry yet.  Once they update their location the geo cascade takes over.
     if (candidates.length === 0) {
-      await this.markWaitingForSupplier(orderId);
-      return;
+      const allActiveRows = await this.dataSource.query(
+        `SELECT * FROM agents WHERE status = $1`,
+        [AgentStatus.ACTIVE],
+      );
+
+      if (allActiveRows.length === 0) {
+        await this.markWaitingForSupplier(orderId);
+        return;
+      }
+
+      this.logger.warn(
+        `No geo-located agents found for order ${orderId} — broadcasting to all ${allActiveRows.length} active agent(s)`,
+      );
+
+      // Build synthetic candidates with 0 distance so the rest of the pipeline works
+      candidates = allActiveRows.map((row: any) => ({
+        agent: Object.assign(new Agent(), row) as Agent,
+        distanceMeters: 0,
+      }));
     }
 
     candidates = candidates.sort((a, b) => a.distanceMeters - b.distanceMeters);
