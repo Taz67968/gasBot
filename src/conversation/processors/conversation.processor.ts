@@ -55,6 +55,19 @@ export class ConversationProcessor {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
+  /**
+   * Looks up a registered supplier agent in the database by their WhatsApp phone.
+   * Returns the agent row (or null if not found / not ACTIVE).
+   * Used to bypass the customer registration flow for known suppliers.
+   */
+  private async lookupAgent(phone: string): Promise<{ id: string; full_name: string; status: string } | null> {
+    const rows = await this.dataSource.query(
+      `SELECT id, full_name, status FROM agents WHERE phone = $1 LIMIT 1`,
+      [phone],
+    );
+    return rows.length ? rows[0] : null;
+  }
+
   @OnEvent('message.received')
   async handleMessageReceived(event: MessageReceivedEvent): Promise<void> {
     const { from, messageId, content, type } = event;
@@ -70,6 +83,16 @@ export class ConversationProcessor {
     // ── Step 3: Brief pause so the typing bubble is visible before the reply ──
     // Adjust the delay (ms) to match the expected response time of your bot.
     await this.delay(1500);
+
+    // ── Check if the sender is a registered supplier agent in the DB ─────────
+    // This runs on every message so the check survives server restarts.
+    // If they are a known agent we handle them in a dedicated supplier context
+    // and return early — they never enter the customer conversation flow.
+    const agentRow = await this.lookupAgent(from);
+    if (agentRow) {
+      await this.handleKnownSupplierMessage(from, agentRow, incomingText);
+      return;
+    }
 
     if (this.supplierRegistrationPolicy.isSupplierRegistrationIntent(incomingText)) {
       await this.startSupplierRegistrationFlow(from, await this.conversationService.getSession(from));
@@ -124,6 +147,13 @@ export class ConversationProcessor {
   }
 
   private async handleIdle(phone: string, session: ConversationSession): Promise<void> {
+    // If the sender is already a registered agent, skip the customer welcome.
+    const agentRow = await this.lookupAgent(phone);
+    if (agentRow) {
+      await this.handleKnownSupplierMessage(phone, agentRow, '');
+      return;
+    }
+
     const lang = session.language;
     const welcomeText = lang === 'fr'
       ? 'Bienvenue chez GasBot ! 🚀\nCommandez votre gaz en quelques clics.'
@@ -135,6 +165,32 @@ export class ConversationProcessor {
       { id: 'lang_fr', title: 'Français' },
     ]);
     await this.conversationService.setState(phone, ConversationState.LANGUAGE_SELECT);
+  }
+
+  /**
+   * Handles any message from a supplier who is already registered in the DB.
+   * They receive a welcome-back confirmation and are reminded they will be
+   * notified automatically — they do NOT go through the customer flow.
+   */
+  private async handleKnownSupplierMessage(
+    phone: string,
+    agent: { id: string; full_name: string; status: string },
+    _incomingText: string,
+  ): Promise<void> {
+    const isActive = agent.status === AgentStatus.ACTIVE;
+    const name = agent.full_name || 'Supplier';
+
+    if (isActive) {
+      await this.whatsappService.sendText(
+        phone,
+        `👋 Welcome back, ${name}!\n\n✅ You are registered and *active* as a GasBot supplier.\n\nYou will receive WhatsApp notifications automatically whenever a customer in your area places an order. Just tap *Accept* when a request arrives!`,
+      );
+    } else {
+      await this.whatsappService.sendText(
+        phone,
+        `👋 Hi ${name}, your supplier account is currently *${agent.status.toLowerCase()}*.\n\nPlease contact GasBot support to reactivate your account.`,
+      );
+    }
   }
 
   private async handleLanguageSelect(
@@ -172,13 +228,15 @@ export class ConversationProcessor {
     const text = (content.buttonTitle || content.text || '').toLowerCase();
 
     if (text.includes('supplier') || text.includes('fournisseur') || text === 'role_supplier') {
-      const existingAgent = await this.conversationService.getSession(phone);
-      const alreadyRegistered = !!existingAgent.data.supplierRegistrationData;
+      // ── Always check the DB, not the in-memory session ───────────────────────
+      // The session is reset on every server restart, so checking
+      // session.data.supplierRegistrationData would wrongly re-register them.
+      const existingAgent = await this.lookupAgent(phone);
 
-      if (alreadyRegistered) {
+      if (existingAgent) {
         await this.whatsappService.sendText(phone, lang === 'fr'
-          ? '✅ Vous êtes déjà inscrit comme fournisseur. Vous recevrez des notifications pour les nouvelles demandes de gaz.'
-          : '✅ You are already registered as a supplier. You will receive notifications for new gas requests.');
+          ? `✅ Vous êtes déjà inscrit comme fournisseur (${existingAgent.full_name}). Vous recevrez automatiquement les notifications pour les nouvelles demandes de gaz.`
+          : `✅ You are already registered as a supplier (${existingAgent.full_name}). You will automatically receive notifications for new gas orders.`);
         await this.conversationService.setState(phone, ConversationState.IDLE);
         return;
       }
