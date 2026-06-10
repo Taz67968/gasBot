@@ -75,41 +75,13 @@ export class WhatsappService {
   }
 
   /**
-   * Show a "typing…" indicator to the user.
-   *
-   * Uses the WhatsApp Cloud API statuses endpoint with action "typing_on".
-   * The indicator disappears automatically after ~25 seconds or when the next
-   * message is sent — no need to explicitly turn it off.
-   *
-   * NOTE: This feature requires the "typing_indicator" capability to be enabled
-   * in your WhatsApp Business Account.  If the API returns an error it is
-   * silently swallowed so the reply flow is never blocked.
-   *
-   * @param to  Recipient phone in E.164 format (will be normalised)
+   * Typing indicator — currently disabled.
+   * The `typing_indicator` message type is not available on the WhatsApp
+   * Cloud API tier being used (returns enum constraint error).
+   * Kept as a no-op so call-sites don't need to be changed.
    */
-  async sendTypingIndicator(to: string): Promise<void> {
-    const formattedTo = formatE164(to);
-    try {
-      // The WhatsApp Cloud API supports a typing indicator via the
-      // /messages endpoint with type "text" and an explicit statuses action.
-      // As an alternative some accounts support the dedicated statuses call:
-      //   POST /{phone-number-id}/messages
-      //   { messaging_product, recipient_type, to, type: "typing_indicator",
-      //     typing_indicator: { type: "text" } }
-      await this.http.post(`/${this.phoneNumberId}/messages`, {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: formattedTo,
-        type: 'typing_indicator',
-        typing_indicator: { type: 'text' },
-      });
-      this.logger.debug(`Typing indicator sent to ${formattedTo}`);
-    } catch (error: any) {
-      // Non-fatal — not all tiers expose this endpoint yet
-      this.logger.warn(
-        `Could not send typing indicator to ${formattedTo}: ${error.response?.data?.error?.message || error.message}`,
-      );
-    }
+  async sendTypingIndicator(_to: string): Promise<void> {
+    // No-op: endpoint unsupported on this tier
   }
 
   /**
@@ -144,10 +116,8 @@ export class WhatsappService {
     }
   }
 
-  /**[Nest] 95  - 06/04/2026, 1:46:01 PM    WARN [WhatsappController] Invalid webhook signatur[Nest] 95  - 06/04/2026, 1:46:01 PM    WARN [WhatsappController] Invalid webhook signature - possible replay or tampering attempt
-[2026-06-04T13:46:01.931Z] POST /webhook/whatsapp - 403 FORBIDDEN - Invalid signature
-[2026-06-04T13:46:01.931Z] POST /webhook/whatsapp - 403 FORBIDDEN - Invalid signature
-   * Send interactive buttons (max 3 choices, as per WhatsApp limit).
+  /**
+   * Send an interactive list (rows/sections).
    */
   async sendInteractiveButtons(
     to: string,

@@ -74,13 +74,9 @@ export class ConversationProcessor {
     const incomingText = `${content.text || ''} ${content.buttonTitle || ''}`.trim();
 
     // ── Step 1: Mark the user's message as read → blue double-ticks ──────────
-    // ── Step 2: Show typing indicator concurrently ────────────────────────────
-    await Promise.all([
-      this.whatsappService.markMessageAsRead(messageId),
-      this.whatsappService.sendTypingIndicator(from),
-    ]);
+    await this.whatsappService.markMessageAsRead(messageId);
 
-    // ── Step 3: Brief pause so the typing bubble is visible before the reply ──
+    // ── Step 2: Brief delay before the bot replies ────────────────────────────
     // Adjust the delay (ms) to match the expected response time of your bot.
     await this.delay(1500);
 
@@ -91,6 +87,28 @@ export class ConversationProcessor {
     const agentRow = await this.lookupAgent(from);
     if (agentRow) {
       await this.handleKnownSupplierMessage(from, agentRow, incomingText);
+      return;
+    }
+
+    // ── Global cancel/back detection ─────────────────────────────────────────
+    // At any point in the conversation the user can type "cancel" or "back"
+    // (in English or French) to restart.  Exceptions: known suppliers (they
+    // have a fixed status page) and messages that are button replies.
+    const isCancelIntent =
+      !agentRow &&
+      !content.buttonTitle &&
+      (incomingText.toLowerCase() === 'cancel' ||
+        incomingText.toLowerCase() === 'back' ||
+        incomingText.toLowerCase() === 'annuler' ||
+        incomingText.toLowerCase() === 'retour');
+
+    if (isCancelIntent) {
+      const lang = (await this.conversationService.getSession(from)).language;
+      await this.whatsappService.sendText(
+        from,
+        lang === 'fr' ? '↩ Retour au menu principal.' : '↩ Going back to the start.',
+      );
+      await this.resetToIdle(from);
       return;
     }
 
@@ -115,7 +133,7 @@ export class ConversationProcessor {
         await this.handleRoleSelect(from, session, content);
         break;
       case ConversationState.MAIN_MENU:
-        await this.handleMainMenu(from, session, content);
+        await this.handleMainMenu(from, session, content, type);
         break;
       case ConversationState.PRODUCT_SELECT:
         await this.handleProductSelection(from, session, content, type);
@@ -140,6 +158,9 @@ export class ConversationProcessor {
         break;
       case ConversationState.SUPPLIER_REGISTRATION:
         await this.handleSupplierRegistrationFlow(from, session, content);
+        break;
+      case ConversationState.SUPPLIER_REVIEW:
+        await this.handleSupplierReview(from, session, content);
         break;
       default:
         await this.resetToIdle(from);
@@ -227,10 +248,15 @@ export class ConversationProcessor {
     const lang = session.language;
     const text = (content.buttonTitle || content.text || '').toLowerCase();
 
+    // Cancel / go back → restart from language select
+    if (text === 'cancel' || text === 'back' || text === 'annuler' || text === 'retour' ||
+        content.buttonTitle === 'cancel_role' || content.buttonTitle === '↩ Cancel' || content.buttonTitle === '↩ Annuler') {
+      await this.resetToIdle(phone);
+      return;
+    }
+
     if (text.includes('supplier') || text.includes('fournisseur') || text === 'role_supplier') {
       // ── Always check the DB, not the in-memory session ───────────────────────
-      // The session is reset on every server restart, so checking
-      // session.data.supplierRegistrationData would wrongly re-register them.
       const existingAgent = await this.lookupAgent(phone);
 
       if (existingAgent) {
@@ -252,22 +278,72 @@ export class ConversationProcessor {
 
   private async sendRoleSelection(phone: string, lang: string): Promise<void> {
     const text = lang === 'fr' ? 'Sélectionnez votre rôle :' : 'Please select your role:';
+    const hintText = lang === 'fr' ? 'Tapez *annuler* pour revenir en arrière.' : 'Type *cancel* to go back.';
+    await this.whatsappService.sendText(phone, hintText);
     await this.whatsappService.sendInteractiveButtons(phone, text, [
       { id: 'role_supplier', title: lang === 'fr' ? 'Fournisseur' : 'Supplier' },
       { id: 'role_customer', title: lang === 'fr' ? 'Client (J\'ai besoin de gaz)' : 'Customer (Need gas)' },
+      { id: 'cancel_role', title: lang === 'fr' ? '↩ Annuler' : '↩ Cancel' },
     ]);
   }
 
+  /**
+   * handleMainMenu — supports both button selection AND direct image upload.
+   * When the customer sends a photo right from the menu, the AI analyses it
+   * and jumps straight to order confirmation — no need to pick from the catalog.
+   */
   private async handleMainMenu(
     phone: string,
     session: ConversationSession,
     content: MessageReceivedEvent['content'],
+    type: string,
   ): Promise<void> {
     const lang = session.language;
-    const catalog = this.catalogs[lang] || this.catalogs['en'];
 
+    // ── Image-first path: customer uploads a photo of their gas cylinder ──────
+    if (type === 'image' && content.mediaId) {
+      await this.whatsappService.sendText(
+        phone,
+        lang === 'fr'
+          ? '🤖 Analyse de votre bouteille en cours…'
+          : '🤖 Analysing your gas cylinder photo…',
+      );
+
+      const analysis = await this.visionService.analyzeGasCylinder(content.mediaId);
+      if (analysis) {
+        const matched = this.findMatchingProduct(analysis, lang);
+        const total = matched.priceXaf + this.deliveryFee;
+        const desc = lang === 'fr'
+          ? `🤖 *Détection IA :* Bouteille ${analysis.sizeKg} kg\n\n*${matched.name}*\nPrix : ${matched.priceXaf} XAF\nLivraison : ${this.deliveryFee} XAF\n*TOTAL : ${total} XAF*\n\nConfirmez-vous ce produit ?`
+          : `🤖 *AI Detected:* ${analysis.sizeKg} kg cylinder\n\n*${matched.name}*\nPrice: ${matched.priceXaf} XAF\nDelivery: ${this.deliveryFee} XAF\n*TOTAL: ${total} XAF*\n\nDo you confirm this product?`;
+
+        await this.conversationService.setState(phone, ConversationState.CONFIRM_PRODUCT, {
+          selectedProduct: matched,
+          visionAnalysis: analysis,
+          bottleImageMediaId: content.mediaId,
+        });
+        await this.whatsappService.sendInteractiveButtons(phone, desc, [
+          { id: 'confirm_yes', title: lang === 'fr' ? 'Oui, confirmer' : 'Yes, confirm' },
+          { id: 'confirm_no', title: lang === 'fr' ? 'Non, changer' : 'No, change' },
+        ]);
+        return;
+      }
+
+      // AI failed — fall through to regular menu
+      await this.whatsappService.sendText(
+        phone,
+        lang === 'fr'
+          ? "❌ Je n'ai pas pu analyser l'image. Veuillez choisir dans le menu ci-dessous."
+          : "❌ I couldn't identify the gas cylinder. Please select from the menu below.",
+      );
+    }
+
+    // ── Button / text path: standard catalog selection ────────────────────────
     if (content.buttonTitle) {
-      const selected = catalog.find((p) => p.sku === content.buttonTitle || p.name.includes(content.buttonTitle || ''));
+      const catalog = this.catalogs[lang] || this.catalogs['en'];
+      const selected = catalog.find(
+        (p) => p.sku === content.buttonTitle || p.name.includes(content.buttonTitle || ''),
+      );
       if (selected) {
         await this.conversationService.setState(phone, ConversationState.CONFIRM_PRODUCT, {
           selectedProduct: selected,
@@ -358,12 +434,13 @@ export class ConversationProcessor {
 
   private async sendBottleUploadOptions(phone: string, lang: string): Promise<void> {
     const promptText = lang === 'fr'
-      ? '📸 Veuillez envoyer une photo de la bouteille de gaz que vous souhaitez commander (ou cliquez sur "Ignorer" si vous ne la souhaitez pas).'
-      : '📸 Please send a photo of the gas bottle you want to order (or tap "Skip" if you don\'t need to upload).';
+      ? '📸 Veuillez envoyer une photo de la bouteille de gaz que vous souhaitez commander (ou choisissez ci-dessous).'
+      : '📸 Please send a photo of the gas bottle you want to order (or choose below).';
 
     await this.whatsappService.sendInteractiveButtons(phone, promptText, [
       { id: 'upload_bottle_photo', title: lang === 'fr' ? 'Envoyer la photo' : 'Upload Photo' },
       { id: 'skip_bottle_photo', title: lang === 'fr' ? 'Ignorer' : 'Skip' },
+      { id: 'back_to_product', title: lang === 'fr' ? '↩ Retour' : '↩ Back' },
     ]);
     await this.conversationService.setState(phone, ConversationState.BOTTLE_IMAGE_UPLOAD);
   }
@@ -375,6 +452,19 @@ export class ConversationProcessor {
     type: string,
   ): Promise<void> {
     const lang = session.language;
+
+    // Handle back button → return to product confirmation
+    if (content.buttonTitle === 'back_to_product' || content.buttonTitle === '↩ Back' || content.buttonTitle === '↩ Retour') {
+      await this.conversationService.setState(phone, ConversationState.CONFIRM_PRODUCT, session.data);
+      const product = session.data.selectedProduct;
+      if (product) {
+        await this.sendProductConfirmation(phone, product, lang);
+      } else {
+        await this.sendMainMenu(phone, lang);
+        await this.conversationService.setState(phone, ConversationState.MAIN_MENU);
+      }
+      return;
+    }
 
     // Handle image upload
     if (type === 'image' && content.mediaId) {
@@ -425,7 +515,7 @@ export class ConversationProcessor {
     content: MessageReceivedEvent['content'],
   ): Promise<void> {
     const lang = session.language || 'en';
-    const step = (session.data.supplierRegistrationStep as 'name' | 'phone' | 'gasType') || 'name';
+    const step = (session.data.supplierRegistrationStep as 'name' | 'gasType') || 'name';
     const currentText = (content.text || '').trim();
 
     if (!currentText) {
@@ -436,20 +526,11 @@ export class ConversationProcessor {
     const nextData = {
       ...(session.data.supplierRegistrationData || {}),
       ...(step === 'name' ? { name: currentText } : {}),
-      ...(step === 'phone' ? { phone: currentText } : {}),
       ...(step === 'gasType' ? { gasType: currentText } : {}),
     };
 
+    // After name → ask for gas type
     if (step === 'name') {
-      await this.conversationService.setState(phone, ConversationState.SUPPLIER_REGISTRATION, {
-        supplierRegistrationStep: 'phone',
-        supplierRegistrationData: nextData,
-      });
-      await this.whatsappService.sendText(phone, this.supplierRegistrationPolicy.getStepPrompt(lang, 'phone'));
-      return;
-    }
-
-    if (step === 'phone') {
       await this.conversationService.setState(phone, ConversationState.SUPPLIER_REGISTRATION, {
         supplierRegistrationStep: 'gasType',
         supplierRegistrationData: nextData,
@@ -458,37 +539,75 @@ export class ConversationProcessor {
       return;
     }
 
-    await this.conversationService.setState(phone, ConversationState.IDLE, {
+    // After gasType → show review screen with Confirm / Edit
+    await this.conversationService.setState(phone, ConversationState.SUPPLIER_REVIEW, {
       supplierRegistrationData: nextData,
     });
 
-    // ── Persist supplier to agents table so the matching cascade can find them ──
-    // Use the WhatsApp phone (E.164 without +) as the authoritative phone number.
-    // The supplier's own stated phone is stored as a display name fallback.
-    const agentPhone = phone; // always use the WA sender's number for delivery
-    const fullName = nextData.name || 'Supplier';
-    const gasType = nextData.gasType || null;
+    const reviewText = lang === 'fr'
+      ? `📋 *Vérifiez vos informations :*\n\n👤 Nom : *${nextData.name}*\n📞 Téléphone WA : *${phone}*\n⛽ Type de gaz : *${nextData.gasType}*\n\nTout est correct ?`
+      : `📋 *Review your details:*\n\n👤 Name: *${nextData.name}*\n📞 WhatsApp number: *${phone}*\n⛽ Gas type: *${nextData.gasType}*\n\nEverything correct?`;
+
+    await this.whatsappService.sendInteractiveButtons(phone, reviewText, [
+      { id: 'supplier_confirm', title: lang === 'fr' ? '✅ Confirmer' : '✅ Confirm' },
+      { id: 'supplier_edit', title: lang === 'fr' ? '✏️ Modifier' : '✏️ Edit' },
+    ]);
+  }
+
+  /**
+   * Handles the supplier review step: Confirm → upsert to DB, Edit → restart.
+   */
+  private async handleSupplierReview(
+    phone: string,
+    session: ConversationSession,
+    content: MessageReceivedEvent['content'],
+  ): Promise<void> {
+    const lang = session.language || 'en';
+    const buttonId = content.buttonTitle || '';
+    const regData = session.data.supplierRegistrationData || {};
+
+    if (buttonId === 'supplier_edit' || buttonId.toLowerCase().includes('edit') || buttonId.toLowerCase().includes('modifier')) {
+      // Restart from name step
+      await this.conversationService.setState(phone, ConversationState.SUPPLIER_REGISTRATION, {
+        supplierRegistrationStep: 'name',
+        supplierRegistrationData: {},
+      });
+      await this.whatsappService.sendText(
+        phone,
+        lang === 'fr' ? '✏️ Recommençons. ' + this.supplierRegistrationPolicy.getStepPrompt(lang, 'name')
+          : '✏️ Let\'s start over. ' + this.supplierRegistrationPolicy.getStepPrompt(lang, 'name'),
+      );
+      return;
+    }
+
+    // Confirm — upsert agent to DB
+    const fullName = regData.name || 'Supplier';
+    const gasType = regData.gasType || null;
+
+    await this.conversationService.setState(phone, ConversationState.IDLE, {});
 
     try {
       await this.dataSource.query(
         `INSERT INTO agents (phone, full_name, status, gas_type, created_at, updated_at)
          VALUES ($1, $2, $3, $4, NOW(), NOW())
          ON CONFLICT (phone) DO UPDATE
-           SET full_name = EXCLUDED.full_name,
-               status    = $3,
-               gas_type  = EXCLUDED.gas_type,
+           SET full_name  = EXCLUDED.full_name,
+               status     = $3,
+               gas_type   = EXCLUDED.gas_type,
                updated_at = NOW()`,
-        [agentPhone, fullName, AgentStatus.ACTIVE, gasType],
+        [phone, fullName, AgentStatus.ACTIVE, gasType],
       );
-      this.logger.log(`Supplier agent upserted in DB: ${agentPhone} (${fullName})`);
+      this.logger.log(`Supplier upserted to DB: ${phone} (${fullName}) — gas: ${gasType}`);
     } catch (dbErr: any) {
-      this.logger.error(`Failed to persist supplier ${agentPhone} to DB: ${dbErr.message}`);
-      // Non-fatal: still confirm registration to the user
+      this.logger.error(`Failed to persist supplier ${phone}: ${dbErr.message}`);
     }
 
-    await this.whatsappService.sendText(phone, lang === 'fr'
-      ? `✅ Inscription confirmée, ${fullName} ! Vous recevrez des notifications WhatsApp dès qu'un client commande du gaz dans votre zone.`
-      : `✅ Registration confirmed, ${fullName}! You will receive WhatsApp notifications whenever a customer orders gas in your area.`);
+    await this.whatsappService.sendText(
+      phone,
+      lang === 'fr'
+        ? `🎉 Inscription réussie, *${fullName}* !\n\n✅ Vous êtes maintenant enregistré comme fournisseur GasBot.\n📞 Numéro : ${phone}\n⛽ Type de gaz : ${gasType || 'Non spécifié'}\n\nVous recevrez une notification WhatsApp dès qu'un client commande du gaz. Tapez simplement *Accepter* quand une demande arrive !`
+        : `🎉 Registration successful, *${fullName}*!\n\n✅ You are now registered as a GasBot supplier.\n📞 Number: ${phone}\n⛽ Gas type: ${gasType || 'Not specified'}\n\nYou will receive a WhatsApp notification whenever a customer orders gas. Just tap *Accept* when a request comes in!`,
+    );
   }
 
   private async sendProductConfirmation(

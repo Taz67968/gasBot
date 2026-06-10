@@ -29,29 +29,28 @@ export class SupplierRegistrationPolicy {
 
   getWhatsAppOnlyMessage(lang: string = 'en'): string {
     if (lang === 'fr') {
-      return 'L’inscription des fournisseurs doit être effectuée uniquement via ce même bot WhatsApp. Répondez ici avec votre nom, votre numéro et le type de gaz à fournir pour démarrer la demande.';
+      return '📋 Inscription fournisseur — Je vais vous poser 2 questions rapides.\n\nÀ tout moment, tapez *annuler* pour abandonner.';
     }
-
-    return 'Supplier registration must be done only on this WhatsApp bot. Reply here with your supplier name, phone number, and the gas type you supply to start the registration request.';
+    return '📋 Supplier registration — I will ask you 2 quick questions.\n\nType *cancel* at any time to stop.';
   }
 
-  getStepPrompt(lang: string = 'en', step: 'name' | 'phone' | 'gasType'): string {
+  /**
+   * Only 2 steps now: name and gasType.
+   * The phone number is taken directly from the WhatsApp account.
+   */
+  getStepPrompt(lang: string = 'en', step: 'name' | 'gasType'): string {
     if (lang === 'fr') {
-      const prompts = {
-        name: 'Étape 1/3 : Envoyez le nom du fournisseur.',
-        phone: 'Étape 2/3 : Envoyez le numéro WhatsApp du fournisseur.',
-        gasType: 'Étape 3/3 : Envoyez le type de gaz fourni par le fournisseur.',
-      } as const;
-
-      return prompts[step];
+      const prompts: Record<string, string> = {
+        name: '✏️ *Étape 1/2* — Quel est votre nom complet ou le nom de votre entreprise de gaz ?',
+        gasType: '✏️ *Étape 2/2* — Quel(s) type(s) de gaz fournissez-vous ? (ex: 6kg, 12kg, 25kg ou Tous)',
+      };
+      return prompts[step] ?? prompts['name'];
     }
 
-    const prompts = {
-      name: 'Step 1/3: Please send the supplier name.',
-      phone: 'Step 2/3: Please send the supplier phone number.',
-      gasType: 'Step 3/3: Please send the gas type supplied by the supplier.',
-    } as const;
-
-    return prompts[step];
+    const prompts: Record<string, string> = {
+      name: '✏️ *Step 1/2* — What is your full name or gas business name?',
+      gasType: '✏️ *Step 2/2* — What gas type(s) do you supply? (e.g. 6kg, 12kg, 25kg, or All)',
+    };
+    return prompts[step] ?? prompts['name'];
   }
 }

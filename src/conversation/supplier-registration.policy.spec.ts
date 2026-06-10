@@ -15,13 +15,12 @@ describe('SupplierRegistrationPolicy', () => {
   it('returns a WhatsApp-only instruction message', () => {
     const message = policy.getWhatsAppOnlyMessage('en');
 
-    expect(message).toContain('this WhatsApp bot');
-    expect(message).toContain('supplier');
+    expect(message).toContain('registration');
+    expect(message.toLowerCase()).toContain('supplier');
   });
 
   it('returns the right prompts for each supplier-registration step', () => {
-    expect(policy.getStepPrompt('en', 'name')).toContain('supplier name');
-    expect(policy.getStepPrompt('en', 'phone')).toContain('phone number');
+    expect(policy.getStepPrompt('en', 'name')).toContain('name');
     expect(policy.getStepPrompt('en', 'gasType')).toContain('gas type');
   });
 });
