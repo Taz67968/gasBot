@@ -26,10 +26,10 @@ describe('WhatsappService', () => {
     service = module.get<WhatsappService>(WhatsappService);
   });
 
-  it('should create axios instance with v21.0 and 15s timeout', () => {
+  it('should create axios instance with v21.0 and 30s timeout', () => {
     expect(mockedAxios.create).toHaveBeenCalledWith({
       baseURL: 'https://graph.facebook.com/v21.0',
-      timeout: 15000,
+      timeout: 30000,
       headers: {
         Authorization: 'Bearer test-api-token',
         'Content-Type': 'application/json',

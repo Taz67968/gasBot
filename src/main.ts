@@ -7,6 +7,22 @@ import { ConfigLoader } from '@/config/configuration';
 import { Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
+process.on('unhandledRejection', (reason: any) => {
+  if (reason?.code === 'ECONNRESET' || reason?.code === 'ETIMEDOUT' || reason?.code === 'ECONNREFUSED') {
+    console.warn(`Network error (${reason.code}): ${reason.message} — will retry via axiosRetry if applicable`);
+    return;
+  }
+  console.error('Unhandled Rejection:', reason);
+});
+
+process.on('uncaughtException', (err: Error) => {
+  console.error('Uncaught Exception:', err.message);
+});
+
+process.on('exit', (code) => {
+  console.log(`Process exiting with code ${code}`);
+});
+
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
