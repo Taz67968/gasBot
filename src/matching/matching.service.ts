@@ -75,12 +75,16 @@ export class MatchingService {
       maxRadiusMeters: 10000,
     };
 
-    await this.matchingQueue.add('START_CASCADE', jobData, {
-      removeOnComplete: true,
-      removeOnFail: 100,
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 2000 },
-    });
+    try {
+      await this.matchingQueue.add('START_CASCADE', jobData, {
+        removeOnComplete: true,
+        removeOnFail: 100,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 2000 },
+      });
+    } catch (queueError: any) {
+      this.logger.error(`Failed to enqueue matching cascade for order ${orderId}: ${queueError.message}. Redis may be unavailable — supplier notifications will not be sent until Redis is restored.`);
+    }
 
     this.logger.log(
       `Started driver matching cascade for order ${orderId} at (${lat}, ${lng})`,

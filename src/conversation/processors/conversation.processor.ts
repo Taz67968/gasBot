@@ -770,12 +770,48 @@ export class ConversationProcessor {
         : '✅ Order confirmed! A supplier will contact you shortly for delivery.');
 
       if (orderId) {
-        await this.matchingService.startAssignmentCascade(orderId);
+        try {
+          await this.matchingService.startAssignmentCascade(orderId);
+        } catch (err: any) {
+          this.logger.warn(`BullMQ cascade failed for ${orderId}, falling back to direct supplier notification: ${err.message}`);
+          await this.notifySuppliersDirectly(orderId, session.data);
+        }
       }
 
       this.logger.log(`Order confirmed for ${phone} via Cash on Delivery`);
     } else {
       await this.resetToIdle(phone);
+    }
+  }
+
+  private async notifySuppliersDirectly(orderId: string, sessionData: Record<string, any>): Promise<void> {
+    try {
+      const agentRows = await this.dataSource.query(
+        `SELECT id, phone, full_name FROM agents WHERE status = 'ACTIVE' LIMIT 5`,
+      );
+
+      if (!agentRows.length) {
+        this.logger.warn(`No ACTIVE suppliers found to notify for order ${orderId}`);
+        return;
+      }
+
+      const product = sessionData.selectedProduct;
+      const totalXaf = product ? product.priceXaf + 1500 : 0;
+      const productName = product ? product.name : 'Gas Cylinder';
+      const location = sessionData.location?.manual || 'Customer location';
+
+      for (const agent of agentRows) {
+        const notificationText = `🔔 New gas order!\n\nProduct: ${productName}\nPrice: ${totalXaf} XAF\nLocation: ${location}\n\nReply with:\n1. "ACCEPT" to accept\n2. "DECLINE" to decline\n\nOrder ID: ${orderId.slice(0, 8)}`;
+
+        try {
+          await this.whatsappService.sendText(agent.phone, notificationText);
+          this.logger.log(`Direct supplier notification sent to ${agent.phone} (${agent.full_name}) for order ${orderId}`);
+        } catch (sendErr: any) {
+          this.logger.error(`Failed to send notification to supplier ${agent.phone}: ${sendErr.message}`);
+        }
+      }
+    } catch (dbErr: any) {
+      this.logger.error(`Failed to fetch suppliers for direct notification: ${dbErr.message}`);
     }
   }
 
