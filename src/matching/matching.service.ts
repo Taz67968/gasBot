@@ -9,7 +9,6 @@ import { StartCascadeJob } from './interfaces/matching-job.interface';
 import { SupplierNotificationService } from './supplier-notification.service';
 import { DispatchService } from '@/dispatch/dispatch.service';
 import { DispatchPayload } from '@/dispatch/dispatch.service';
-import { AgentStatus } from '@/common/enums/agent-status.enum';
 
 @Injectable()
 export class MatchingService {
@@ -20,7 +19,7 @@ export class MatchingService {
     private readonly matchingQueue: Queue,
     @InjectDataSource()
     private readonly dataSource: DataSource,
-    _geoService: GeoService,
+    private readonly geoService: GeoService,
     private readonly supplierNotificationService: SupplierNotificationService,
     private readonly dispatchService: DispatchService,
   ) {}
@@ -68,7 +67,7 @@ export class MatchingService {
       return;
     }
 
-    candidates = candidates.sort((a, b) => a.distanceMeters - b.distanceMeters);
+    candidates = candidates.sort((a: any, b: any) => a.distanceMeters - b.distanceMeters);
     const firstAgent = candidates[0];
 
     const totalXaf = orderRows[0].total_xaf || 0;
@@ -78,7 +77,6 @@ export class MatchingService {
       sizeKg: 12,
       amountXaf: totalXaf,
       estimatedDistanceMeters: firstAgent.distanceMeters,
-      bottleImageMediaId: undefined,
     };
 
     try {
@@ -120,7 +118,7 @@ export class MatchingService {
   private async advanceToNextSupplier(
     orderId: string,
     currentAgentId: string,
-    currentDistanceMeters: number,
+    _currentDistanceMeters: number,
     totalXaf: number,
     candidates: any[],
   ): Promise<void> {
@@ -139,7 +137,6 @@ export class MatchingService {
       sizeKg: 12,
       amountXaf: totalXaf,
       estimatedDistanceMeters: nextCandidate.distanceMeters,
-      bottleImageMediaId: undefined,
     };
 
     try {
