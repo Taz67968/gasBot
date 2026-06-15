@@ -1043,10 +1043,15 @@ export class ConversationProcessor {
 
       if (orderId) {
         try {
+          this.logger.log(`Starting assignment cascade for order ${orderId}`);
           await this.matchingService.startAssignmentCascade(orderId);
+          this.logger.log(`startAssignmentCascade completed without throwing for ${orderId}`);
         } catch (err: any) {
+          this.logger.error(
+            `BullMQ cascade failed for ${orderId}: ${err.message}`,
+          );
           this.logger.warn(
-            `BullMQ cascade failed for ${orderId}, falling back to direct supplier notification: ${err.message}`,
+            `Falling back to direct supplier notification for order ${orderId}`,
           );
 
           const product = session.data.selectedProduct;

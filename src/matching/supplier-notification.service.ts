@@ -35,6 +35,8 @@ export class SupplierNotificationService {
       }
 
       const message = this.buildMessage(orderId, details);
+      const acceptId = `direct_accept_${orderId}`;
+      const declineId = `direct_decline_${orderId}`;
 
       for (const agent of agentRows) {
         const agentPhone = agent.phone as string | undefined;
@@ -43,7 +45,10 @@ export class SupplierNotificationService {
         }
 
         try {
-          await this.whatsappService.sendText(agentPhone, message);
+          await this.whatsappService.sendInteractiveButtons(agentPhone, message, [
+            { id: acceptId, title: 'Accept' },
+            { id: declineId, title: 'Decline' },
+          ]);
           this.logger.log(`Supplier notification sent to agent ${agent.id} (${agent.full_name}) for order ${orderId}`);
         } catch (sendErr: unknown) {
           const sendMessage = sendErr instanceof Error ? sendErr.message : 'Unknown error';

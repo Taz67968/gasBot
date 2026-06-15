@@ -27,16 +27,40 @@ export class MatchingResponseListener {
   async handleSupplierResponse(event: MessageReceivedEvent): Promise<void> {
     const { from, content } = event;
 
-    if (!content.buttonTitle) return;
-
     const buttonId = content.buttonTitle;
+    const text = (content.text || '').trim().toUpperCase();
 
-    if (buttonId.startsWith('accept_')) {
-      const orderId = buttonId.replace('accept_', '');
-      await this.handleAccept(from, orderId);
-    } else if (buttonId.startsWith('decline_')) {
-      const orderId = buttonId.replace('decline_', '');
-      await this.handleDecline(from, orderId);
+    if (buttonId) {
+      if (
+        buttonId.startsWith('accept_') ||
+        buttonId.startsWith('direct_accept_')
+      ) {
+        const orderId = buttonId
+          .replace('direct_accept_', '')
+          .replace('accept_', '');
+        await this.handleAccept(from, orderId);
+        return;
+      }
+
+      if (
+        buttonId.startsWith('decline_') ||
+        buttonId.startsWith('direct_decline_')
+      ) {
+        const orderId = buttonId
+          .replace('direct_decline_', '')
+          .replace('decline_', '');
+        await this.handleDecline(from, orderId);
+        return;
+      }
+    }
+
+    if (text === 'ACCEPT' || text === 'ACCEPTER') {
+      await this.handleTextAccept(from, text, event);
+      return;
+    }
+    if (text === 'DECLINE' || text === 'REFUSER') {
+      await this.handleDecline(from, event);
+      return;
     }
   }
 
@@ -78,8 +102,8 @@ export class MatchingResponseListener {
       }
 
       if (
-        lockedOrder.status !== OrderStatus.SUPPLIER_ASSIGNED ||
-        lockedOrder.agent_id !== null
+        lockedOrder.agent_id !== null &&
+        lockedOrder.agent_id !== agentId
       ) {
         await queryRunner.rollbackTransaction();
         await this.whatsappService.sendText(
@@ -89,19 +113,34 @@ export class MatchingResponseListener {
         return;
       }
 
-      // Claim the order
+      const alreadySameAgent =
+        lockedOrder.status === OrderStatus.SUPPLIER_ACCEPTED &&
+        lockedOrder.agent_id === agentId;
+      if (alreadySameAgent) {
+        await queryRunner.rollbackTransaction();
+        await this.whatsappService.sendText(
+          agentPhone,
+          `You already accepted this order.`,
+        );
+        return;
+      }
+
+      const nextStatus =
+        lockedOrder.status === OrderStatus.WAITING_FOR_SUPPLIER
+          ? OrderStatus.SUPPLIER_ASSIGNED
+          : OrderStatus.SUPPLIER_ACCEPTED;
+
       await queryRunner.query(
         `UPDATE orders 
          SET agent_id = $1, status = $2, updated_at = NOW() 
          WHERE id = $3`,
-        [agentId, OrderStatus.SUPPLIER_ACCEPTED, orderId],
+        [agentId, nextStatus, orderId],
       );
 
       await queryRunner.commitTransaction();
 
       this.logger.log(`Supplier ${agentId} accepted order ${orderId}`);
 
-      // Fetch delivery location and amount for rich map link
       const [orderDetails] = await this.dataSource.query(
         `SELECT ST_AsText(delivery_location) as wkt, total_xaf FROM orders WHERE id = $1`,
         [orderId],
@@ -121,21 +160,22 @@ export class MatchingResponseListener {
         );
       }
 
-      // Notify customer
-      const [order] = await this.dataSource.query(
-        `SELECT customer_id FROM orders WHERE id = $1`,
-        [orderId],
-      );
-      if (order) {
-        const [customer] = await this.dataSource.query(
-          `SELECT phone FROM customers WHERE id = $1`,
-          [order.customer_id],
+      if (nextStatus === OrderStatus.SUPPLIER_ACCEPTED) {
+        const [order] = await this.dataSource.query(
+          `SELECT customer_id FROM orders WHERE id = $1`,
+          [orderId],
         );
-        if (customer) {
-          await this.whatsappService.sendText(
-            customer.phone,
-            `✅ A supplier has accepted your order and is on the way!`,
+        if (order) {
+          const [customer] = await this.dataSource.query(
+            `SELECT phone FROM customers WHERE id = $1`,
+            [order.customer_id],
           );
+          if (customer) {
+            await this.whatsappService.sendText(
+              customer.phone,
+              `✅ A supplier has accepted your order and is on the way!`,
+            );
+          }
         }
       }
     } catch (error: any) {
@@ -153,10 +193,34 @@ export class MatchingResponseListener {
     }
   }
 
+  private async handleTextAccept(
+    agentPhone: string,
+    _text: string,
+    event: MessageReceivedEvent,
+  ): Promise<void> {
+    const contextWord = event.content.text || '';
+    const orderId = contextWord.match(/[A-F0-9-]{8,}/i)?.[0] || '';
+
+    if (!orderId) {
+      await this.whatsappService.sendText(
+        agentPhone,
+        'Please share the order code or use the Accept button from the notification.',
+      );
+      return;
+    }
+
+    await this.handleAccept(agentPhone, orderId);
+  }
+
   private async handleDecline(
     agentPhone: string,
-    orderId: string,
+    eventOrOrderId: MessageReceivedEvent | string,
   ): Promise<void> {
+    const orderId = typeof eventOrOrderId === 'string'
+      ? eventOrOrderId
+      : ((eventOrOrderId.content.text || '').match(/[A-F0-9-]{8,}/i)?.[0] ||
+         '');
+
     const [agentRow] = await this.dataSource.query(
       `SELECT id FROM agents WHERE phone = $1`,
       [agentPhone],
@@ -164,19 +228,16 @@ export class MatchingResponseListener {
 
     if (!agentRow) return;
 
-    const agentId = agentRow.id;
-
-    // Check if order is still assigned to this agent
     const [order] = await this.dataSource.query(
-      `SELECT status, agent_id FROM orders WHERE id = $1`,
+      `SELECT id, status, agent_id FROM orders WHERE id = $1`,
       [orderId],
     );
 
     if (
-      order?.status === OrderStatus.SUPPLIER_ASSIGNED &&
-      order?.agent_id === agentId
+      order &&
+      (order.status === OrderStatus.SUPPLIER_ASSIGNED ||
+        order.status === OrderStatus.WAITING_FOR_SUPPLIER)
     ) {
-      // Advance immediately on decline
       await this.whatsappService.sendText(
         agentPhone,
         'Thank you. The request has been passed to the next supplier.',

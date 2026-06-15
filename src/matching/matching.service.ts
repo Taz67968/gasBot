@@ -58,12 +58,21 @@ export class MatchingService {
       maxRadiusMeters: 10000,
     };
 
-    await this.matchingQueue.add('START_CASCADE', jobData, {
-      removeOnComplete: true,
-      removeOnFail: 100,
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 2000 },
-    });
+    try {
+      this.logger.log(`Enqueueing START_CASCADE for order ${orderId}`);
+      await this.matchingQueue.add('START_CASCADE', jobData, {
+        removeOnComplete: true,
+        removeOnFail: 100,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 2000 },
+      });
+      this.logger.log(`Enqueued START_CASCADE for order ${orderId}`);
+    } catch (queueErr: unknown) {
+      const message = queueErr instanceof Error ? queueErr.message : 'Unknown error';
+      this.logger.error(`Failed to enqueue matching job for order ${orderId}: ${message}`);
+      await this.supplierNotificationService.notifyAllActive(orderId);
+      throw queueErr;
+    }
 
     this.logger.log(`Started driver matching cascade for order ${orderId} at (${lat}, ${lng})`);
   }
