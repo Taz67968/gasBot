@@ -172,7 +172,10 @@ export class MatchingResponseListener {
       [orderId],
     );
 
-    if (order?.status === OrderStatus.SUPPLIER_ASSIGNED && order?.agent_id === agentId) {
+    if (
+      order?.status === OrderStatus.SUPPLIER_ASSIGNED &&
+      order?.agent_id === agentId
+    ) {
       // Advance immediately on decline
       await this.whatsappService.sendText(
         agentPhone,

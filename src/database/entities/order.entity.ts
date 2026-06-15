@@ -62,7 +62,12 @@ export class Order {
   totalXaf!: number;
 
   // Image media ID of the gas bottle customer wants (for supplier reference)
-  @Column({ type: 'varchar', length: 100, nullable: true, name: 'bottle_image_media_id' })
+  @Column({
+    type: 'varchar',
+    length: 100,
+    nullable: true,
+    name: 'bottle_image_media_id',
+  })
   bottleImageMediaId?: string;
 
   @Column({ type: 'timestamptz', nullable: true, name: 'acknowledged_at' })

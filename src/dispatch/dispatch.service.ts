@@ -115,14 +115,20 @@ export class DispatchService {
     }
   }
 
-  async sendDeclineTimeout(phone: string, orderReference: string): Promise<void> {
+  async sendDeclineTimeout(
+    phone: string,
+    orderReference: string,
+  ): Promise<void> {
     await this.whatsappService.sendText(
       phone,
       `⏰ You took too long to respond for order ${orderReference}. The request has been passed to another supplier.`,
     );
   }
 
-  async sendNoSuppliersAvailable(phone: string, orderReference: string): Promise<void> {
+  async sendNoSuppliersAvailable(
+    phone: string,
+    orderReference: string,
+  ): Promise<void> {
     await this.whatsappService.sendText(
       phone,
       `⚠️ No suppliers found for order ${orderReference}. We'll notify you when one becomes available.`,

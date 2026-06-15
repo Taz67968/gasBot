@@ -16,7 +16,11 @@ import { SupplierRegistrationPolicy } from './supplier-registration.policy';
     MatchingModule,
     OrderModule,
   ],
-  providers: [ConversationService, ConversationProcessor, SupplierRegistrationPolicy],
+  providers: [
+    ConversationService,
+    ConversationProcessor,
+    SupplierRegistrationPolicy,
+  ],
   exports: [ConversationService, ConversationProcessor],
 })
 export class ConversationModule {}

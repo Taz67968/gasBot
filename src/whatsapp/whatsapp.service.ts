@@ -59,11 +59,14 @@ export class WhatsappService {
         retries: 3,
         retryDelay: (retryCount) => Math.min(1000 * 2 ** retryCount, 10000),
         retryCondition: (error) => {
-          const isNetworkError = error.code === 'ECONNRESET' ||
+          const isNetworkError =
+            error.code === 'ECONNRESET' ||
             error.code === 'ETIMEDOUT' ||
             error.code === 'ECONNREFUSED';
           if (isNetworkError) {
-            this.logger.warn(`WhatsApp API network error, will retry: ${error.message}`);
+            this.logger.warn(
+              `WhatsApp API network error, will retry: ${error.message}`,
+            );
           }
           return isNetworkError;
         },

@@ -48,7 +48,11 @@ export class AddMissingColumns1749516000000 implements MigrationInterface {
   public async down(queryRunner: QueryRunner): Promise<void> {
     // Note: removing an enum value in PostgreSQL requires recreating the type.
     // For simplicity only column drops are reversed here.
-    await queryRunner.query(`ALTER TABLE agents DROP COLUMN IF EXISTS gas_type`);
-    await queryRunner.query(`ALTER TABLE orders DROP COLUMN IF EXISTS bottle_image_media_id`);
+    await queryRunner.query(
+      `ALTER TABLE agents DROP COLUMN IF EXISTS gas_type`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE orders DROP COLUMN IF EXISTS bottle_image_media_id`,
+    );
   }
 }

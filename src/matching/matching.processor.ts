@@ -128,7 +128,13 @@ export class MatchingProcessor extends WorkerHost {
     );
 
     const firstAgent = candidates[0];
-    await this.offerToSupplier(orderId, firstAgent.agent.id, 0, firstAgent.distanceMeters, orderRow.total_xaf);
+    await this.offerToSupplier(
+      orderId,
+      firstAgent.agent.id,
+      0,
+      firstAgent.distanceMeters,
+      orderRow.total_xaf,
+    );
   }
 
   private async offerToSupplier(
@@ -166,8 +172,14 @@ export class MatchingProcessor extends WorkerHost {
     };
 
     try {
-      await this.dispatchService.sendAssignmentOffer(agentPhone, payload, orderId);
-      this.logger.log(`Supplier notification sent to ${agentId} (${distanceMeters}m away) for order ${orderId}`);
+      await this.dispatchService.sendAssignmentOffer(
+        agentPhone,
+        payload,
+        orderId,
+      );
+      this.logger.log(
+        `Supplier notification sent to ${agentId} (${distanceMeters}m away) for order ${orderId}`,
+      );
     } catch (error: any) {
       await this.advanceToNextSupplier(orderId, attemptIndex);
       return;
@@ -202,11 +214,19 @@ export class MatchingProcessor extends WorkerHost {
       return;
     }
 
-    this.logger.warn(`90s timeout reached for supplier ${agentId} on order ${orderId}`);
+    this.logger.warn(
+      `90s timeout reached for supplier ${agentId} on order ${orderId}`,
+    );
 
-    const [agent] = await this.dataSource.query(`SELECT phone FROM agents WHERE id = $1`, [agentId]);
+    const [agent] = await this.dataSource.query(
+      `SELECT phone FROM agents WHERE id = $1`,
+      [agentId],
+    );
     if (agent) {
-      await this.dispatchService.sendDeclineTimeout(agent.phone, orderId.slice(0, 8));
+      await this.dispatchService.sendDeclineTimeout(
+        agent.phone,
+        orderId.slice(0, 8),
+      );
     }
 
     await this.advanceToNextSupplier(orderId, attemptIndex);
@@ -245,9 +265,20 @@ export class MatchingProcessor extends WorkerHost {
       [orderId, agentIds[nextIndex]],
     );
 
-    const nextDistance = nextAgent ? Math.round(parseFloat(nextAgent.distance_meters)) : 0;
-    const [orderDetails] = await this.dataSource.query(`SELECT total_xaf FROM orders WHERE id = $1`, [orderId]);
-    await this.offerToSupplier(orderId, agentIds[nextIndex], nextIndex, nextDistance, orderDetails?.total_xaf || 0);
+    const nextDistance = nextAgent
+      ? Math.round(parseFloat(nextAgent.distance_meters))
+      : 0;
+    const [orderDetails] = await this.dataSource.query(
+      `SELECT total_xaf FROM orders WHERE id = $1`,
+      [orderId],
+    );
+    await this.offerToSupplier(
+      orderId,
+      agentIds[nextIndex],
+      nextIndex,
+      nextDistance,
+      orderDetails?.total_xaf || 0,
+    );
   }
 
   private async markWaitingForSupplier(orderId: string): Promise<void> {
@@ -256,13 +287,24 @@ export class MatchingProcessor extends WorkerHost {
       [OrderStatus.WAITING_FOR_SUPPLIER, orderId],
     );
 
-    this.logger.log(`Order ${orderId} moved to WAITING_FOR_SUPPLIER (no suppliers found)`);
+    this.logger.log(
+      `Order ${orderId} moved to WAITING_FOR_SUPPLIER (no suppliers found)`,
+    );
 
-    const [order] = await this.dataSource.query(`SELECT customer_id FROM orders WHERE id = $1`, [orderId]);
+    const [order] = await this.dataSource.query(
+      `SELECT customer_id FROM orders WHERE id = $1`,
+      [orderId],
+    );
     if (order) {
-      const [customer] = await this.dataSource.query(`SELECT phone FROM customers WHERE id = $1`, [order.customer_id]);
+      const [customer] = await this.dataSource.query(
+        `SELECT phone FROM customers WHERE id = $1`,
+        [order.customer_id],
+      );
       if (customer) {
-        await this.dispatchService.sendNoSuppliersAvailable(customer.phone, orderId.slice(0, 8));
+        await this.dispatchService.sendNoSuppliersAvailable(
+          customer.phone,
+          orderId.slice(0, 8),
+        );
       }
     }
   }

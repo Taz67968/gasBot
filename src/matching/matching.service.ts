@@ -6,12 +6,8 @@ import { DataSource } from 'typeorm';
 import { GeoService } from '@/geo/geo.service';
 import { OrderStatus } from '@/common/enums/order-status.enum';
 import { StartCascadeJob } from './interfaces/matching-job.interface';
+import { SupplierNotificationService } from './supplier-notification.service';
 
-/**
- * MatchingService
- * High-level API to trigger geospatial driver assignment cascades.
- * Uses BullMQ for reliable, retryable, delayed task orchestration.
- */
 @Injectable()
 export class MatchingService {
   private readonly logger = new Logger(MatchingService.name);
@@ -21,54 +17,41 @@ export class MatchingService {
     private readonly matchingQueue: Queue,
     @InjectDataSource()
     private readonly dataSource: DataSource,
-    _geoService: GeoService, // reserved for future radius pre-filtering
+    _geoService: GeoService,
+    private readonly supplierNotificationService: SupplierNotificationService,
   ) {}
 
-  /**
-   * Starts the real-time geospatial driver assignment cascade for a confirmed order.
-   * Called after CASH_ACKNOWLEDGEMENT when the customer has confirmed payment method.
-   */
   async startAssignmentCascade(orderId: string): Promise<void> {
-    // Verify the order is in the correct state
     const orderRows = await this.dataSource.query(
       `SELECT id, status, delivery_location FROM orders WHERE id = $1`,
       [orderId],
     );
 
-    if (
-      !orderRows.length ||
-      orderRows[0].status !== OrderStatus.CASH_ACKNOWLEDGED
-    ) {
-      this.logger.warn(
-        `Cannot start cascade for order ${orderId} - invalid state`,
-      );
+    if (!orderRows.length || orderRows[0].status !== OrderStatus.CASH_ACKNOWLEDGED) {
+      this.logger.warn(`Cannot start cascade for order ${orderId} - invalid state`);
       return;
     }
 
-    // Parse PostGIS geography point to get lat/lng (stored as WKT or binary, we use ST_AsText)
-    const pointText: string = await this.dataSource
-      .query(
-        `SELECT ST_AsText(delivery_location) as point FROM orders WHERE id = $1`,
-        [orderId],
-      )
+    const pointText: string | undefined = await this.dataSource
+      .query(`SELECT ST_AsText(delivery_location) as point FROM orders WHERE id = $1`, [orderId])
       .then((r) => r[0]?.point);
 
     if (!pointText) {
       this.logger.error(`Order ${orderId} has no delivery location`);
+      await this.supplierNotificationService.notifyAllActive(orderId);
       return;
     }
 
-    // Extract coordinates from "POINT(lng lat)"
-    const match = pointText.match(/POINT\(([^ ]+) ([^)]+)\)/);
-    if (!match) {
+    const coordinateMatch = pointText.match(/POINT\(([^ ]+) ([^)]+)\)/);
+    if (!coordinateMatch) {
       this.logger.error(`Invalid geometry for order ${orderId}`);
+      await this.supplierNotificationService.notifyAllActive(orderId);
       return;
     }
 
-    const lng = parseFloat(match[1]);
-    const lat = parseFloat(match[2]);
+    const lng = parseFloat(coordinateMatch[1]);
+    const lat = parseFloat(coordinateMatch[2]);
 
-    // Enqueue the initial cascade job (starts at 5km)
     const jobData: StartCascadeJob = {
       orderId,
       initialRadiusMeters: 5000,
@@ -82,8 +65,6 @@ export class MatchingService {
       backoff: { type: 'exponential', delay: 2000 },
     });
 
-    this.logger.log(
-      `Started driver matching cascade for order ${orderId} at (${lat}, ${lng})`,
-    );
+    this.logger.log(`Started driver matching cascade for order ${orderId} at (${lat}, ${lng})`);
   }
 }

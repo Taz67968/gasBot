@@ -8,8 +8,14 @@ import { Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
 process.on('unhandledRejection', (reason: any) => {
-  if (reason?.code === 'ECONNRESET' || reason?.code === 'ETIMEDOUT' || reason?.code === 'ECONNREFUSED') {
-    console.warn(`Network error (${reason.code}): ${reason.message} — will retry via axiosRetry if applicable`);
+  if (
+    reason?.code === 'ECONNRESET' ||
+    reason?.code === 'ETIMEDOUT' ||
+    reason?.code === 'ECONNREFUSED'
+  ) {
+    console.warn(
+      `Network error (${reason.code}): ${reason.message} — will retry via axiosRetry if applicable`,
+    );
     return;
   }
   console.error('Unhandled Rejection:', reason);
@@ -136,7 +142,9 @@ async function bootstrap() {
         `Database migrations completed successfully (${appliedMigrations.length} applied)`,
       );
     } else {
-      logger.log('Database migrations completed successfully (no pending migrations)');
+      logger.log(
+        'Database migrations completed successfully (no pending migrations)',
+      );
     }
   } catch (migrationError: any) {
     logger.error(`Database migration failed: ${migrationError.message}`);

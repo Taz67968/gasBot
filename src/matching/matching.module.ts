@@ -9,17 +9,12 @@ import { WhatsappModule } from '@/whatsapp/whatsapp.module';
 import { DispatchModule } from '@/dispatch/dispatch.module';
 import { Order } from '@/database/entities/order.entity';
 import { RedisModule } from '@/redis/redis.module';
+import { SupplierNotificationService } from './supplier-notification.service';
 
-/**
- * MatchingModule
- * Real-time geospatial driver assignment system powered by BullMQ + PostGIS.
- */
 @Module({
   imports: [
     BullModule.registerQueue({
       name: 'driver-matching',
-      // Connection is automatically provided by BullMQ module (uses default Redis)
-      // We rely on the global Redis URL configured via ConfigLoader in the app.
     }),
     TypeOrmModule.forFeature([Order]),
     GeoModule,
@@ -27,7 +22,12 @@ import { RedisModule } from '@/redis/redis.module';
     DispatchModule,
     RedisModule,
   ],
-  providers: [MatchingService, MatchingProcessor, MatchingResponseListener],
-  exports: [MatchingService],
+  providers: [
+    MatchingService,
+    MatchingProcessor,
+    MatchingResponseListener,
+    SupplierNotificationService,
+  ],
+  exports: [MatchingService, SupplierNotificationService],
 })
 export class MatchingModule {}

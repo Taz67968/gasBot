@@ -16,7 +16,10 @@ const AppDataSource = new DataSource({
   password: process.env.DB_PASSWORD ?? 'postgres',
   database: process.env.DB_NAME ?? 'gasbot',
   entities: [Agent, Customer, Order, Payment, Zone],
-  migrations: [InitialGasbotSchema1747914000000, AddMissingColumns1749516000000],
+  migrations: [
+    InitialGasbotSchema1747914000000,
+    AddMissingColumns1749516000000,
+  ],
   migrationsTableName: 'typeorm_migrations',
   logging: process.env.NODE_ENV !== 'production',
   ssl:

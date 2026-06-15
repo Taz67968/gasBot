@@ -45,33 +45,33 @@ import { AppService } from './app.service';
 
     // Enterprise TypeORM connection with strict production settings
     // Uses validated DB config, explicit entities, and migration-based schema management
-     TypeOrmModule.forRootAsync({
-       imports: [ConfigurationModule],
-       inject: [ConfigLoader],
-       useFactory: (config: ConfigLoader) => ({
-         type: 'postgres',
-         host: config.dbHost,
-         port: config.dbPort,
-         username: config.dbUsername,
-         password: config.dbPassword,
-         database: config.dbName,
-         entities: [Customer, Zone, Agent, Order, Payment],
-         migrations: [join(__dirname, 'database/migrations/*{.ts,.js}')],
-         migrationsRun: true, // run migrations on startup in all environments
-         synchronize: config.nodeEnv === 'test', // auto-sync schema for testing
-         logging: config.nodeEnv !== 'production',
-         ssl:
-           config.nodeEnv !== 'development'
-             ? { rejectUnauthorized: false }
-             : false,
-         // Extra production hardening
-         maxQueryExecutionTime: 10000,
-         connectTimeout: 10000,
-         extra: {
-           ssl: config.nodeEnv !== 'development',
-         },
-       }),
-     }),
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigurationModule],
+      inject: [ConfigLoader],
+      useFactory: (config: ConfigLoader) => ({
+        type: 'postgres',
+        host: config.dbHost,
+        port: config.dbPort,
+        username: config.dbUsername,
+        password: config.dbPassword,
+        database: config.dbName,
+        entities: [Customer, Zone, Agent, Order, Payment],
+        migrations: [join(__dirname, 'database/migrations/*{.ts,.js}')],
+        migrationsRun: true, // run migrations on startup in all environments
+        synchronize: config.nodeEnv === 'test', // auto-sync schema for testing
+        logging: config.nodeEnv !== 'production',
+        ssl:
+          config.nodeEnv !== 'development'
+            ? { rejectUnauthorized: false }
+            : false,
+        // Extra production hardening
+        maxQueryExecutionTime: 10000,
+        connectTimeout: 10000,
+        extra: {
+          ssl: config.nodeEnv !== 'development',
+        },
+      }),
+    }),
 
     // Global event emitter for domain events (used by Whatsapp webhook → Vision / Order flows)
     EventEmitterModule.forRoot({ global: true }),

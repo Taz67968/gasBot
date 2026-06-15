@@ -114,8 +114,11 @@ export class WhatsappController {
               case 'button':
               case 'interactive':
                 // Handle both button types - interactive contains button_reply
-                content.buttonTitle = msg.button?.text || msg.button?.payload || 
-                  msg.interactive?.button_reply?.title || msg.interactive?.button_reply?.id;
+                content.buttonTitle =
+                  msg.button?.text ||
+                  msg.button?.payload ||
+                  msg.interactive?.button_reply?.title ||
+                  msg.interactive?.button_reply?.id;
                 break;
               case 'list':
               case 'list_reply':

@@ -11,6 +11,7 @@ import { VisionService, GasCylinderAnalysis } from '@/vision/vision.service';
 import { MessageReceivedEvent } from '@/whatsapp/events/message-received.event';
 import { MatchingService } from '@/matching/matching.service';
 import { OrderService } from '@/order/order.service';
+import { SupplierNotificationService } from '@/matching/supplier-notification.service';
 import { SupplierRegistrationPolicy } from '../supplier-registration.policy';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
@@ -22,14 +23,44 @@ export class ConversationProcessor {
 
   private readonly catalogs: Record<string, any[]> = {
     en: [
-      { sku: 'GAS_6KG', name: '6kg Gas Cylinder (Standard)', priceXaf: 4500, sizeKg: 6 },
-      { sku: 'GAS_12KG', name: '12kg Gas Cylinder (Standard)', priceXaf: 8500, sizeKg: 12 },
-      { sku: 'GAS_25KG', name: '25kg Gas Cylinder (Commercial)', priceXaf: 16500, sizeKg: 25 },
+      {
+        sku: 'GAS_6KG',
+        name: '6kg Gas Cylinder (Standard)',
+        priceXaf: 4500,
+        sizeKg: 6,
+      },
+      {
+        sku: 'GAS_12KG',
+        name: '12kg Gas Cylinder (Standard)',
+        priceXaf: 8500,
+        sizeKg: 12,
+      },
+      {
+        sku: 'GAS_25KG',
+        name: '25kg Gas Cylinder (Commercial)',
+        priceXaf: 16500,
+        sizeKg: 25,
+      },
     ],
     fr: [
-      { sku: 'GAS_6KG', name: 'Bouteille de Gaz 6kg (Standard)', priceXaf: 4500, sizeKg: 6 },
-      { sku: 'GAS_12KG', name: 'Bouteille de Gaz 12kg (Standard)', priceXaf: 8500, sizeKg: 12 },
-      { sku: 'GAS_25KG', name: 'Bouteille de Gaz 25kg (Commercial)', priceXaf: 16500, sizeKg: 25 },
+      {
+        sku: 'GAS_6KG',
+        name: 'Bouteille de Gaz 6kg (Standard)',
+        priceXaf: 4500,
+        sizeKg: 6,
+      },
+      {
+        sku: 'GAS_12KG',
+        name: 'Bouteille de Gaz 12kg (Standard)',
+        priceXaf: 8500,
+        sizeKg: 12,
+      },
+      {
+        sku: 'GAS_25KG',
+        name: 'Bouteille de Gaz 25kg (Commercial)',
+        priceXaf: 16500,
+        sizeKg: 25,
+      },
     ],
   };
 
@@ -42,10 +73,11 @@ export class ConversationProcessor {
     private readonly visionService: VisionService,
     private readonly matchingService: MatchingService,
     private readonly orderService: OrderService,
+    private readonly supplierNotificationService: SupplierNotificationService,
     private readonly supplierRegistrationPolicy: SupplierRegistrationPolicy,
     _eventEmitter: EventEmitter2,
     @InjectDataSource() private readonly dataSource: DataSource,
-  ) { }
+  ) {}
 
   /**
    * Small helper that resolves after `ms` milliseconds.
@@ -60,7 +92,9 @@ export class ConversationProcessor {
    * Returns the agent row (or null if not found / not ACTIVE).
    * Used to bypass the customer registration flow for known suppliers.
    */
-  private async lookupAgent(phone: string): Promise<{ id: string; full_name: string; status: string } | null> {
+  private async lookupAgent(
+    phone: string,
+  ): Promise<{ id: string; full_name: string; status: string } | null> {
     const rows = await this.dataSource.query(
       `SELECT id, full_name, status FROM agents WHERE phone = $1 LIMIT 1`,
       [phone],
@@ -71,7 +105,8 @@ export class ConversationProcessor {
   @OnEvent('message.received')
   async handleMessageReceived(event: MessageReceivedEvent): Promise<void> {
     const { from, messageId, content, type } = event;
-    const incomingText = `${content.text || ''} ${content.buttonTitle || ''}`.trim();
+    const incomingText =
+      `${content.text || ''} ${content.buttonTitle || ''}`.trim();
 
     // ── Step 1: Mark the user's message as read → blue double-ticks ──────────
     await this.whatsappService.markMessageAsRead(messageId);
@@ -106,21 +141,30 @@ export class ConversationProcessor {
       const lang = (await this.conversationService.getSession(from)).language;
       await this.whatsappService.sendText(
         from,
-        lang === 'fr' ? '↩ Retour au menu principal.' : '↩ Going back to the start.',
+        lang === 'fr'
+          ? '↩ Retour au menu principal.'
+          : '↩ Going back to the start.',
       );
       await this.resetToIdle(from);
       return;
     }
 
-    if (this.supplierRegistrationPolicy.isSupplierRegistrationIntent(incomingText)) {
-      await this.startSupplierRegistrationFlow(from, await this.conversationService.getSession(from));
+    if (
+      this.supplierRegistrationPolicy.isSupplierRegistrationIntent(incomingText)
+    ) {
+      await this.startSupplierRegistrationFlow(
+        from,
+        await this.conversationService.getSession(from),
+      );
       return;
     }
 
     await this.customerService.findOrCreate(from);
     const session = await this.conversationService.getSession(from);
 
-    this.logger.log(`Processing message for ${from} in state ${session.state} (type=${type})`);
+    this.logger.log(
+      `Processing message for ${from} in state ${session.state} (type=${type})`,
+    );
 
     switch (session.state) {
       case ConversationState.IDLE:
@@ -167,7 +211,10 @@ export class ConversationProcessor {
     }
   }
 
-  private async handleIdle(phone: string, session: ConversationSession): Promise<void> {
+  private async handleIdle(
+    phone: string,
+    session: ConversationSession,
+  ): Promise<void> {
     // If the sender is already a registered agent, skip the customer welcome.
     const agentRow = await this.lookupAgent(phone);
     if (agentRow) {
@@ -176,16 +223,24 @@ export class ConversationProcessor {
     }
 
     const lang = session.language;
-    const welcomeText = lang === 'fr'
-      ? 'Bienvenue chez GasBot ! 🚀\nCommandez votre gaz en quelques clics.'
-      : 'Welcome to GasBot! 🚀\nOrder your gas in a few taps.';
+    const welcomeText =
+      lang === 'fr'
+        ? 'Bienvenue chez GasBot ! 🚀\nCommandez votre gaz en quelques clics.'
+        : 'Welcome to GasBot! 🚀\nOrder your gas in a few taps.';
 
     await this.whatsappService.sendText(phone, welcomeText);
-    await this.whatsappService.sendInteractiveButtons(phone, lang === 'fr' ? 'Choisissez votre langue :' : 'Choose your language:', [
-      { id: 'lang_en', title: 'English' },
-      { id: 'lang_fr', title: 'Français' },
-    ]);
-    await this.conversationService.setState(phone, ConversationState.LANGUAGE_SELECT);
+    await this.whatsappService.sendInteractiveButtons(
+      phone,
+      lang === 'fr' ? 'Choisissez votre langue :' : 'Choose your language:',
+      [
+        { id: 'lang_en', title: 'English' },
+        { id: 'lang_fr', title: 'Français' },
+      ],
+    );
+    await this.conversationService.setState(
+      phone,
+      ConversationState.LANGUAGE_SELECT,
+    );
   }
 
   /**
@@ -221,9 +276,15 @@ export class ConversationProcessor {
   ): Promise<void> {
     let chosenLang = session.language;
     if (content.buttonTitle) {
-      if (content.buttonTitle.toLowerCase().includes('english') || content.buttonTitle === 'lang_en') {
+      if (
+        content.buttonTitle.toLowerCase().includes('english') ||
+        content.buttonTitle === 'lang_en'
+      ) {
         chosenLang = 'en';
-      } else if (content.buttonTitle.toLowerCase().includes('français') || content.buttonTitle === 'lang_fr') {
+      } else if (
+        content.buttonTitle.toLowerCase().includes('français') ||
+        content.buttonTitle === 'lang_fr'
+      ) {
         chosenLang = 'fr';
       }
     }
@@ -231,13 +292,17 @@ export class ConversationProcessor {
     await this.conversationService.setLanguage(phone, chosenLang);
     await this.customerService.updateLanguage(phone, chosenLang);
 
-    const welcomeText = chosenLang === 'fr'
-      ? 'Bienvenue chez GasBot ! 🚀\nJe vous aide à obtenir du gaz ou à devenir fournisseur.'
-      : 'Welcome to GasBot! 🚀\nI help you get gas or become a supplier.';
+    const welcomeText =
+      chosenLang === 'fr'
+        ? 'Bienvenue chez GasBot ! 🚀\nJe vous aide à obtenir du gaz ou à devenir fournisseur.'
+        : 'Welcome to GasBot! 🚀\nI help you get gas or become a supplier.';
 
     await this.whatsappService.sendText(phone, welcomeText);
     await this.sendRoleSelection(phone, chosenLang);
-    await this.conversationService.setState(phone, ConversationState.ROLE_SELECT);
+    await this.conversationService.setState(
+      phone,
+      ConversationState.ROLE_SELECT,
+    );
   }
 
   private async handleRoleSelect(
@@ -249,20 +314,34 @@ export class ConversationProcessor {
     const text = (content.buttonTitle || content.text || '').toLowerCase();
 
     // Cancel / go back → restart from language select
-    if (text === 'cancel' || text === 'back' || text === 'annuler' || text === 'retour' ||
-        content.buttonTitle === 'cancel_role' || content.buttonTitle === '↩ Cancel' || content.buttonTitle === '↩ Annuler') {
+    if (
+      text === 'cancel' ||
+      text === 'back' ||
+      text === 'annuler' ||
+      text === 'retour' ||
+      content.buttonTitle === 'cancel_role' ||
+      content.buttonTitle === '↩ Cancel' ||
+      content.buttonTitle === '↩ Annuler'
+    ) {
       await this.resetToIdle(phone);
       return;
     }
 
-    if (text.includes('supplier') || text.includes('fournisseur') || text === 'role_supplier') {
+    if (
+      text.includes('supplier') ||
+      text.includes('fournisseur') ||
+      text === 'role_supplier'
+    ) {
       // ── Always check the DB, not the in-memory session ───────────────────────
       const existingAgent = await this.lookupAgent(phone);
 
       if (existingAgent) {
-        await this.whatsappService.sendText(phone, lang === 'fr'
-          ? `✅ Vous êtes déjà inscrit comme fournisseur (${existingAgent.full_name}). Vous recevrez automatiquement les notifications pour les nouvelles demandes de gaz.`
-          : `✅ You are already registered as a supplier (${existingAgent.full_name}). You will automatically receive notifications for new gas orders.`);
+        await this.whatsappService.sendText(
+          phone,
+          lang === 'fr'
+            ? `✅ Vous êtes déjà inscrit comme fournisseur (${existingAgent.full_name}). Vous recevrez automatiquement les notifications pour les nouvelles demandes de gaz.`
+            : `✅ You are already registered as a supplier (${existingAgent.full_name}). You will automatically receive notifications for new gas orders.`,
+        );
         await this.conversationService.setState(phone, ConversationState.IDLE);
         return;
       }
@@ -270,19 +349,33 @@ export class ConversationProcessor {
       return;
     }
 
-    const menuText = lang === 'fr' ? 'Merci ! Voici notre menu principal :' : 'Thank you! Here is our main menu:';
+    const menuText =
+      lang === 'fr'
+        ? 'Merci ! Voici notre menu principal :'
+        : 'Thank you! Here is our main menu:';
     await this.whatsappService.sendText(phone, menuText);
     await this.sendMainMenu(phone, lang);
     await this.conversationService.setState(phone, ConversationState.MAIN_MENU);
   }
 
   private async sendRoleSelection(phone: string, lang: string): Promise<void> {
-    const text = lang === 'fr' ? 'Sélectionnez votre rôle :' : 'Please select your role:';
-    const hintText = lang === 'fr' ? 'Tapez *annuler* pour revenir en arrière.' : 'Type *cancel* to go back.';
+    const text =
+      lang === 'fr' ? 'Sélectionnez votre rôle :' : 'Please select your role:';
+    const hintText =
+      lang === 'fr'
+        ? 'Tapez *annuler* pour revenir en arrière.'
+        : 'Type *cancel* to go back.';
     await this.whatsappService.sendText(phone, hintText);
     await this.whatsappService.sendInteractiveButtons(phone, text, [
-      { id: 'role_supplier', title: lang === 'fr' ? 'Fournisseur' : 'Supplier' },
-      { id: 'role_customer', title: lang === 'fr' ? 'Client (J\'ai besoin de gaz)' : 'Customer (Need gas)' },
+      {
+        id: 'role_supplier',
+        title: lang === 'fr' ? 'Fournisseur' : 'Supplier',
+      },
+      {
+        id: 'role_customer',
+        title:
+          lang === 'fr' ? "Client (J'ai besoin de gaz)" : 'Customer (Need gas)',
+      },
       { id: 'cancel_role', title: lang === 'fr' ? '↩ Annuler' : '↩ Cancel' },
     ]);
   }
@@ -309,22 +402,35 @@ export class ConversationProcessor {
           : '🤖 Analysing your gas cylinder photo…',
       );
 
-      const analysis = await this.visionService.analyzeGasCylinder(content.mediaId);
+      const analysis = await this.visionService.analyzeGasCylinder(
+        content.mediaId,
+      );
       if (analysis) {
         const matched = this.findMatchingProduct(analysis, lang);
         const total = matched.priceXaf + this.deliveryFee;
-        const desc = lang === 'fr'
-          ? `🤖 *Détection IA :* Bouteille ${analysis.sizeKg} kg\n\n*${matched.name}*\nPrix : ${matched.priceXaf} XAF\nLivraison : ${this.deliveryFee} XAF\n*TOTAL : ${total} XAF*\n\nConfirmez-vous ce produit ?`
-          : `🤖 *AI Detected:* ${analysis.sizeKg} kg cylinder\n\n*${matched.name}*\nPrice: ${matched.priceXaf} XAF\nDelivery: ${this.deliveryFee} XAF\n*TOTAL: ${total} XAF*\n\nDo you confirm this product?`;
+        const desc =
+          lang === 'fr'
+            ? `🤖 *Détection IA :* Bouteille ${analysis.sizeKg} kg\n\n*${matched.name}*\nPrix : ${matched.priceXaf} XAF\nLivraison : ${this.deliveryFee} XAF\n*TOTAL : ${total} XAF*\n\nConfirmez-vous ce produit ?`
+            : `🤖 *AI Detected:* ${analysis.sizeKg} kg cylinder\n\n*${matched.name}*\nPrice: ${matched.priceXaf} XAF\nDelivery: ${this.deliveryFee} XAF\n*TOTAL: ${total} XAF*\n\nDo you confirm this product?`;
 
-        await this.conversationService.setState(phone, ConversationState.CONFIRM_PRODUCT, {
-          selectedProduct: matched,
-          visionAnalysis: analysis,
-          bottleImageMediaId: content.mediaId,
-        });
+        await this.conversationService.setState(
+          phone,
+          ConversationState.CONFIRM_PRODUCT,
+          {
+            selectedProduct: matched,
+            visionAnalysis: analysis,
+            bottleImageMediaId: content.mediaId,
+          },
+        );
         await this.whatsappService.sendInteractiveButtons(phone, desc, [
-          { id: 'confirm_yes', title: lang === 'fr' ? 'Oui, confirmer' : 'Yes, confirm' },
-          { id: 'confirm_no', title: lang === 'fr' ? 'Non, changer' : 'No, change' },
+          {
+            id: 'confirm_yes',
+            title: lang === 'fr' ? 'Oui, confirmer' : 'Yes, confirm',
+          },
+          {
+            id: 'confirm_no',
+            title: lang === 'fr' ? 'Non, changer' : 'No, change',
+          },
         ]);
         return;
       }
@@ -342,12 +448,18 @@ export class ConversationProcessor {
     if (content.buttonTitle) {
       const catalog = this.catalogs[lang] || this.catalogs['en'];
       const selected = catalog.find(
-        (p) => p.sku === content.buttonTitle || p.name.includes(content.buttonTitle || ''),
+        (p) =>
+          p.sku === content.buttonTitle ||
+          p.name.includes(content.buttonTitle || ''),
       );
       if (selected) {
-        await this.conversationService.setState(phone, ConversationState.CONFIRM_PRODUCT, {
-          selectedProduct: selected,
-        });
+        await this.conversationService.setState(
+          phone,
+          ConversationState.CONFIRM_PRODUCT,
+          {
+            selectedProduct: selected,
+          },
+        );
         await this.sendProductConfirmation(phone, selected, lang);
         return;
       }
@@ -364,34 +476,51 @@ export class ConversationProcessor {
     const lang = session.language;
 
     if (type === 'image' && content.mediaId) {
-      const analysis: GasCylinderAnalysis | null = await this.visionService.analyzeGasCylinder(content.mediaId);
+      const analysis: GasCylinderAnalysis | null =
+        await this.visionService.analyzeGasCylinder(content.mediaId);
       if (analysis) {
         const matched = this.findMatchingProduct(analysis, lang);
-        await this.conversationService.setState(phone, ConversationState.CONFIRM_PRODUCT, {
-          selectedProduct: matched,
-          visionAnalysis: analysis,
-          bottleImageMediaId: content.mediaId,
-        });
+        await this.conversationService.setState(
+          phone,
+          ConversationState.CONFIRM_PRODUCT,
+          {
+            selectedProduct: matched,
+            visionAnalysis: analysis,
+            bottleImageMediaId: content.mediaId,
+          },
+        );
         await this.sendProductConfirmation(phone, matched, lang);
         return;
       }
-      await this.whatsappService.sendText(phone, lang === 'fr'
-        ? "Désolé, je n'ai pas pu analyser l'image. Veuillez choisir dans le menu."
-        : "Sorry, I couldn't analyze the image. Please select from the menu.");
+      await this.whatsappService.sendText(
+        phone,
+        lang === 'fr'
+          ? "Désolé, je n'ai pas pu analyser l'image. Veuillez choisir dans le menu."
+          : "Sorry, I couldn't analyze the image. Please select from the menu.",
+      );
     }
 
     if (content.buttonTitle || content.text) {
       const selectedSku = content.buttonTitle || content.text;
       const catalog = this.catalogs[lang];
-      const product = catalog.find((p) =>
-        p.sku === selectedSku || p.name.toLowerCase().includes((selectedSku || '').toLowerCase()),
+      const product = catalog.find(
+        (p) =>
+          p.sku === selectedSku ||
+          p.name.toLowerCase().includes((selectedSku || '').toLowerCase()),
       );
 
       if (product) {
-        await this.conversationService.setState(phone, ConversationState.CONFIRM_PRODUCT, { selectedProduct: product });
+        await this.conversationService.setState(
+          phone,
+          ConversationState.CONFIRM_PRODUCT,
+          { selectedProduct: product },
+        );
         await this.sendProductConfirmation(phone, product, lang);
       } else {
-        await this.whatsappService.sendText(phone, 'Invalid selection. Please choose again.');
+        await this.whatsappService.sendText(
+          phone,
+          'Invalid selection. Please choose again.',
+        );
         await this.sendMainMenu(phone, lang);
       }
     }
@@ -414,35 +543,58 @@ export class ConversationProcessor {
       );
       await this.whatsappService.sendText(
         phone,
-        lang === 'fr' ? '✅ Photo de la bouteille reçue.' : '✅ Bottle photo received.',
+        lang === 'fr'
+          ? '✅ Photo de la bouteille reçue.'
+          : '✅ Bottle photo received.',
       );
       await this.sendBottleUploadOptions(phone, lang);
       return;
     }
 
     // Handle confirmation buttons
-    if (content.buttonTitle?.includes('Yes') || content.buttonTitle?.includes('Oui') || content.buttonTitle === 'confirm_yes') {
+    if (
+      content.buttonTitle?.includes('Yes') ||
+      content.buttonTitle?.includes('Oui') ||
+      content.buttonTitle === 'confirm_yes'
+    ) {
       await this.sendBottleUploadOptions(phone, lang);
       return;
     }
 
-    if (content.buttonTitle?.includes('No') || content.buttonTitle?.includes('Non') || content.buttonTitle === 'confirm_no') {
+    if (
+      content.buttonTitle?.includes('No') ||
+      content.buttonTitle?.includes('Non') ||
+      content.buttonTitle === 'confirm_no'
+    ) {
       await this.sendMainMenu(phone, lang);
-      await this.conversationService.setState(phone, ConversationState.MAIN_MENU);
+      await this.conversationService.setState(
+        phone,
+        ConversationState.MAIN_MENU,
+      );
     }
   }
 
-  private async sendBottleUploadOptions(phone: string, lang: string): Promise<void> {
-    const promptText = lang === 'fr'
-      ? '📸 Veuillez envoyer une photo de la bouteille de gaz que vous souhaitez commander (ou choisissez ci-dessous).'
-      : '📸 Please send a photo of the gas bottle you want to order (or choose below).';
+  private async sendBottleUploadOptions(
+    phone: string,
+    lang: string,
+  ): Promise<void> {
+    const promptText =
+      lang === 'fr'
+        ? '📸 Veuillez envoyer une photo de la bouteille de gaz que vous souhaitez commander (ou choisissez ci-dessous).'
+        : '📸 Please send a photo of the gas bottle you want to order (or choose below).';
 
     await this.whatsappService.sendInteractiveButtons(phone, promptText, [
-      { id: 'upload_bottle_photo', title: lang === 'fr' ? 'Envoyer la photo' : 'Upload Photo' },
+      {
+        id: 'upload_bottle_photo',
+        title: lang === 'fr' ? 'Envoyer la photo' : 'Upload Photo',
+      },
       { id: 'skip_bottle_photo', title: lang === 'fr' ? 'Ignorer' : 'Skip' },
       { id: 'back_to_product', title: lang === 'fr' ? '↩ Retour' : '↩ Back' },
     ]);
-    await this.conversationService.setState(phone, ConversationState.BOTTLE_IMAGE_UPLOAD);
+    await this.conversationService.setState(
+      phone,
+      ConversationState.BOTTLE_IMAGE_UPLOAD,
+    );
   }
 
   private async handleBottleImageUpload(
@@ -454,14 +606,25 @@ export class ConversationProcessor {
     const lang = session.language;
 
     // Handle back button → return to product confirmation
-    if (content.buttonTitle === 'back_to_product' || content.buttonTitle === '↩ Back' || content.buttonTitle === '↩ Retour') {
-      await this.conversationService.setState(phone, ConversationState.CONFIRM_PRODUCT, session.data);
+    if (
+      content.buttonTitle === 'back_to_product' ||
+      content.buttonTitle === '↩ Back' ||
+      content.buttonTitle === '↩ Retour'
+    ) {
+      await this.conversationService.setState(
+        phone,
+        ConversationState.CONFIRM_PRODUCT,
+        session.data,
+      );
       const product = session.data.selectedProduct;
       if (product) {
         await this.sendProductConfirmation(phone, product, lang);
       } else {
         await this.sendMainMenu(phone, lang);
-        await this.conversationService.setState(phone, ConversationState.MAIN_MENU);
+        await this.conversationService.setState(
+          phone,
+          ConversationState.MAIN_MENU,
+        );
       }
       return;
     }
@@ -484,8 +647,14 @@ export class ConversationProcessor {
     }
 
     // Handle skip button
-    if (content.buttonTitle?.includes('Skip') || content.buttonTitle?.includes('Ignorer')) {
-      await this.conversationService.setState(phone, ConversationState.LOCATION_INPUT);
+    if (
+      content.buttonTitle?.includes('Skip') ||
+      content.buttonTitle?.includes('Ignorer')
+    ) {
+      await this.conversationService.setState(
+        phone,
+        ConversationState.LOCATION_INPUT,
+      );
       await this.whatsappService.sendText(
         phone,
         lang === 'fr'
@@ -501,12 +670,22 @@ export class ConversationProcessor {
     session: ConversationSession,
   ): Promise<void> {
     const lang = session.language || 'en';
-    await this.whatsappService.sendText(phone, this.supplierRegistrationPolicy.getWhatsAppOnlyMessage(lang));
-    await this.conversationService.setState(phone, ConversationState.SUPPLIER_REGISTRATION, {
-      supplierRegistrationStep: 'name',
-      supplierRegistrationData: {},
-    });
-    await this.whatsappService.sendText(phone, this.supplierRegistrationPolicy.getStepPrompt(lang, 'name'));
+    await this.whatsappService.sendText(
+      phone,
+      this.supplierRegistrationPolicy.getWhatsAppOnlyMessage(lang),
+    );
+    await this.conversationService.setState(
+      phone,
+      ConversationState.SUPPLIER_REGISTRATION,
+      {
+        supplierRegistrationStep: 'name',
+        supplierRegistrationData: {},
+      },
+    );
+    await this.whatsappService.sendText(
+      phone,
+      this.supplierRegistrationPolicy.getStepPrompt(lang, 'name'),
+    );
   }
 
   private async handleSupplierRegistrationFlow(
@@ -515,11 +694,15 @@ export class ConversationProcessor {
     content: MessageReceivedEvent['content'],
   ): Promise<void> {
     const lang = session.language || 'en';
-    const step = (session.data.supplierRegistrationStep as 'name' | 'gasType') || 'name';
+    const step =
+      (session.data.supplierRegistrationStep as 'name' | 'gasType') || 'name';
     const currentText = (content.text || '').trim();
 
     if (!currentText) {
-      await this.whatsappService.sendText(phone, this.supplierRegistrationPolicy.getStepPrompt(lang, step));
+      await this.whatsappService.sendText(
+        phone,
+        this.supplierRegistrationPolicy.getStepPrompt(lang, step),
+      );
       return;
     }
 
@@ -531,25 +714,40 @@ export class ConversationProcessor {
 
     // After name → ask for gas type
     if (step === 'name') {
-      await this.conversationService.setState(phone, ConversationState.SUPPLIER_REGISTRATION, {
-        supplierRegistrationStep: 'gasType',
-        supplierRegistrationData: nextData,
-      });
-      await this.whatsappService.sendText(phone, this.supplierRegistrationPolicy.getStepPrompt(lang, 'gasType'));
+      await this.conversationService.setState(
+        phone,
+        ConversationState.SUPPLIER_REGISTRATION,
+        {
+          supplierRegistrationStep: 'gasType',
+          supplierRegistrationData: nextData,
+        },
+      );
+      await this.whatsappService.sendText(
+        phone,
+        this.supplierRegistrationPolicy.getStepPrompt(lang, 'gasType'),
+      );
       return;
     }
 
     // After gasType → show review screen with Confirm / Edit
-    await this.conversationService.setState(phone, ConversationState.SUPPLIER_REVIEW, {
-      supplierRegistrationData: nextData,
-    });
+    await this.conversationService.setState(
+      phone,
+      ConversationState.SUPPLIER_REVIEW,
+      {
+        supplierRegistrationData: nextData,
+      },
+    );
 
-    const reviewText = lang === 'fr'
-      ? `📋 *Vérifiez vos informations :*\n\n👤 Nom : *${nextData.name}*\n📞 Téléphone WA : *${phone}*\n⛽ Type de gaz : *${nextData.gasType}*\n\nTout est correct ?`
-      : `📋 *Review your details:*\n\n👤 Name: *${nextData.name}*\n📞 WhatsApp number: *${phone}*\n⛽ Gas type: *${nextData.gasType}*\n\nEverything correct?`;
+    const reviewText =
+      lang === 'fr'
+        ? `📋 *Vérifiez vos informations :*\n\n👤 Nom : *${nextData.name}*\n📞 Téléphone WA : *${phone}*\n⛽ Type de gaz : *${nextData.gasType}*\n\nTout est correct ?`
+        : `📋 *Review your details:*\n\n👤 Name: *${nextData.name}*\n📞 WhatsApp number: *${phone}*\n⛽ Gas type: *${nextData.gasType}*\n\nEverything correct?`;
 
     await this.whatsappService.sendInteractiveButtons(phone, reviewText, [
-      { id: 'supplier_confirm', title: lang === 'fr' ? '✅ Confirmer' : '✅ Confirm' },
+      {
+        id: 'supplier_confirm',
+        title: lang === 'fr' ? '✅ Confirmer' : '✅ Confirm',
+      },
       { id: 'supplier_edit', title: lang === 'fr' ? '✏️ Modifier' : '✏️ Edit' },
     ]);
   }
@@ -566,16 +764,27 @@ export class ConversationProcessor {
     const buttonId = content.buttonTitle || '';
     const regData = session.data.supplierRegistrationData || {};
 
-    if (buttonId === 'supplier_edit' || buttonId.toLowerCase().includes('edit') || buttonId.toLowerCase().includes('modifier')) {
+    if (
+      buttonId === 'supplier_edit' ||
+      buttonId.toLowerCase().includes('edit') ||
+      buttonId.toLowerCase().includes('modifier')
+    ) {
       // Restart from name step
-      await this.conversationService.setState(phone, ConversationState.SUPPLIER_REGISTRATION, {
-        supplierRegistrationStep: 'name',
-        supplierRegistrationData: {},
-      });
+      await this.conversationService.setState(
+        phone,
+        ConversationState.SUPPLIER_REGISTRATION,
+        {
+          supplierRegistrationStep: 'name',
+          supplierRegistrationData: {},
+        },
+      );
       await this.whatsappService.sendText(
         phone,
-        lang === 'fr' ? '✏️ Recommençons. ' + this.supplierRegistrationPolicy.getStepPrompt(lang, 'name')
-          : '✏️ Let\'s start over. ' + this.supplierRegistrationPolicy.getStepPrompt(lang, 'name'),
+        lang === 'fr'
+          ? '✏️ Recommençons. ' +
+              this.supplierRegistrationPolicy.getStepPrompt(lang, 'name')
+          : "✏️ Let's start over. " +
+              this.supplierRegistrationPolicy.getStepPrompt(lang, 'name'),
       );
       return;
     }
@@ -597,9 +806,13 @@ export class ConversationProcessor {
                updated_at = NOW()`,
         [phone, fullName, AgentStatus.ACTIVE, gasType],
       );
-      this.logger.log(`Supplier upserted to DB: ${phone} (${fullName}) — gas: ${gasType}`);
+      this.logger.log(
+        `Supplier upserted to DB: ${phone} (${fullName}) — gas: ${gasType}`,
+      );
     } catch (dbErr: any) {
-      this.logger.error(`Failed to persist supplier ${phone}: ${dbErr.message}`);
+      this.logger.error(
+        `Failed to persist supplier ${phone}: ${dbErr.message}`,
+      );
     }
 
     await this.whatsappService.sendText(
@@ -615,16 +828,27 @@ export class ConversationProcessor {
     product: any,
     lang: string,
   ): Promise<void> {
-    const text = lang === 'fr'
-      ? `Vous avez sélectionné : ${product.name} — ${product.priceXaf} XAF\nConfirmez-vous ?`
-      : `You selected: ${product.name} — ${product.priceXaf} XAF\nDo you confirm?`;
+    const text =
+      lang === 'fr'
+        ? `Vous avez sélectionné : ${product.name} — ${product.priceXaf} XAF\nConfirmez-vous ?`
+        : `You selected: ${product.name} — ${product.priceXaf} XAF\nDo you confirm?`;
 
     await this.whatsappService.sendInteractiveButtons(phone, text, [
-      { id: 'confirm_yes', title: lang === 'fr' ? 'Oui, confirmer' : 'Yes, confirm' },
-      { id: 'confirm_no', title: lang === 'fr' ? 'Non, changer' : 'No, change' },
+      {
+        id: 'confirm_yes',
+        title: lang === 'fr' ? 'Oui, confirmer' : 'Yes, confirm',
+      },
+      {
+        id: 'confirm_no',
+        title: lang === 'fr' ? 'Non, changer' : 'No, change',
+      },
     ]);
 
-    await this.conversationService.setState(phone, ConversationState.CONFIRM_PRODUCT, { selectedProduct: product });
+    await this.conversationService.setState(
+      phone,
+      ConversationState.CONFIRM_PRODUCT,
+      { selectedProduct: product },
+    );
   }
 
   private async handleLocationInput(
@@ -656,20 +880,32 @@ export class ConversationProcessor {
         },
       );
 
-      const liveLocationPrompt = lang === 'fr'
-        ? 'Voulez-vous partager votre position en temps réel pour aider le fournisseur à vous trouver plus facilement ?'
-        : 'Would you like to share your live location to help the supplier find you more easily?';
+      const liveLocationPrompt =
+        lang === 'fr'
+          ? 'Voulez-vous partager votre position en temps réel pour aider le fournisseur à vous trouver plus facilement ?'
+          : 'Would you like to share your live location to help the supplier find you more easily?';
 
-      await this.whatsappService.sendInteractiveButtons(phone, liveLocationPrompt, [
-        { id: 'share_live_location', title: lang === 'fr' ? 'Oui, partager' : 'Yes, share' },
-        { id: 'no_live_location', title: lang === 'fr' ? 'Non, continuer' : "No, continue" },
-      ]);
+      await this.whatsappService.sendInteractiveButtons(
+        phone,
+        liveLocationPrompt,
+        [
+          {
+            id: 'share_live_location',
+            title: lang === 'fr' ? 'Oui, partager' : 'Yes, share',
+          },
+          {
+            id: 'no_live_location',
+            title: lang === 'fr' ? 'Non, continuer' : 'No, continue',
+          },
+        ],
+      );
       return;
     }
 
-    const promptText = lang === 'fr'
-      ? 'Veuillez entrer votre emplacement de livraison (adresse, quartier, ou lieu connu):'
-      : 'Please enter your delivery location (address, neighborhood, or known place):';
+    const promptText =
+      lang === 'fr'
+        ? 'Veuillez entrer votre emplacement de livraison (adresse, quartier, ou lieu connu):'
+        : 'Please enter your delivery location (address, neighborhood, or known place):';
 
     await this.whatsappService.sendText(phone, promptText);
   }
@@ -681,10 +917,15 @@ export class ConversationProcessor {
   ): Promise<void> {
     const lang = session.language;
 
-    if (content.buttonTitle?.includes('Yes') || content.buttonTitle?.includes('Oui')) {
+    if (
+      content.buttonTitle?.includes('Yes') ||
+      content.buttonTitle?.includes('Oui')
+    ) {
       await this.whatsappService.sendLocationRequest(
         phone,
-        lang === 'fr' ? 'Partagez votre position actuelle:' : 'Share your current location:',
+        lang === 'fr'
+          ? 'Partagez votre position actuelle:'
+          : 'Share your current location:',
       );
       return;
     }
@@ -708,16 +949,19 @@ export class ConversationProcessor {
     const lang = orderDetails.lang || 'en';
 
     for (const supplierPhone of supplierPhones) {
-      let notificationText = lang === 'fr'
-        ? `🔔 Nouvelle demande de gaz !\nClient: ${orderDetails.customerName}\nProduit: ${orderDetails.product}\nPrix: ${orderDetails.price} XAF + ${orderDetails.deliveryFee} XAF livraison = ${orderDetails.price + orderDetails.deliveryFee} XAF\nEmplacement: ${orderDetails.location}\n\nRépondez avec:\n1. "ACCEPTER" pour accepter\n2. "REFUSER" pour décliner`
-        : `🔔 New gas request!\nCustomer: ${orderDetails.customerName}\nProduct: ${orderDetails.product}\nPrice: ${orderDetails.price} XAF + ${orderDetails.deliveryFee} XAF delivery = ${orderDetails.price + orderDetails.deliveryFee} XAF\nLocation: ${orderDetails.location}\n\nReply with:\n1. "ACCEPT" to accept\n2. "DECLINE" to decline`;
+      let notificationText =
+        lang === 'fr'
+          ? `🔔 Nouvelle demande de gaz !\nClient: ${orderDetails.customerName}\nProduit: ${orderDetails.product}\nPrix: ${orderDetails.price} XAF + ${orderDetails.deliveryFee} XAF livraison = ${orderDetails.price + orderDetails.deliveryFee} XAF\nEmplacement: ${orderDetails.location}\n\nRépondez avec:\n1. "ACCEPTER" pour accepter\n2. "REFUSER" pour décliner`
+          : `🔔 New gas request!\nCustomer: ${orderDetails.customerName}\nProduct: ${orderDetails.product}\nPrice: ${orderDetails.price} XAF + ${orderDetails.deliveryFee} XAF delivery = ${orderDetails.price + orderDetails.deliveryFee} XAF\nLocation: ${orderDetails.location}\n\nReply with:\n1. "ACCEPT" to accept\n2. "DECLINE" to decline`;
 
       if (orderDetails.bottleImageMediaId) {
         notificationText += `\n\n🖼️ Image de la bouteille: ${orderDetails.bottleImageMediaId}`;
       }
 
       await this.whatsappService.sendText(supplierPhone, notificationText);
-      this.logger.log(`Notification sent to supplier ${supplierPhone} for order ${orderDetails.orderId}`);
+      this.logger.log(
+        `Notification sent to supplier ${supplierPhone} for order ${orderDetails.orderId}`,
+      );
     }
   }
 
@@ -727,11 +971,20 @@ export class ConversationProcessor {
     content: any,
   ): Promise<void> {
     if (content.buttonTitle?.toLowerCase().includes('confirm')) {
-      await this.conversationService.setState(phone, ConversationState.CASH_ACKNOWLEDGEMENT);
+      await this.conversationService.setState(
+        phone,
+        ConversationState.CASH_ACKNOWLEDGEMENT,
+      );
       await this.sendCashAcknowledgement(phone, session);
     } else {
-      await this.conversationService.setState(phone, ConversationState.LOCATION_INPUT);
-      await this.whatsappService.sendLocationRequest(phone, 'Please share your delivery location:');
+      await this.conversationService.setState(
+        phone,
+        ConversationState.LOCATION_INPUT,
+      );
+      await this.whatsappService.sendLocationRequest(
+        phone,
+        'Please share your delivery location:',
+      );
     }
   }
 
@@ -742,76 +995,74 @@ export class ConversationProcessor {
   ): Promise<void> {
     const lang = session.language;
 
-    if (content.buttonTitle?.includes('Confirm') || content.buttonTitle?.includes('Pay Cash') || content.buttonTitle?.includes('Confirmer')) {
+    if (
+      content.buttonTitle?.includes('Confirm') ||
+      content.buttonTitle?.includes('Pay Cash') ||
+      content.buttonTitle?.includes('Confirmer')
+    ) {
       let orderId = session.data.orderId;
 
       if (!orderId) {
         try {
-          const order = await this.orderService.createOrderFromSession(phone, session.data);
+          const order = await this.orderService.createOrderFromSession(
+            phone,
+            session.data,
+          );
           orderId = order.id;
-          await this.conversationService.setState(phone, ConversationState.IDLE, {
-            orderConfirmed: true,
-            paymentMethod: 'CASH_ON_DELIVERY',
-            orderId,
-          });
+          await this.conversationService.setState(
+            phone,
+            ConversationState.IDLE,
+            {
+              orderConfirmed: true,
+              paymentMethod: 'CASH_ON_DELIVERY',
+              orderId,
+            },
+          );
           this.logger.log(`Persisted order ${orderId} for ${phone}`);
         } catch (err: any) {
-          this.logger.error(`Failed to create order for ${phone}: ${err.message}`);
-          await this.whatsappService.sendText(phone, lang === 'fr'
-            ? 'Désolé, une erreur est survenue lors de la création de la commande. Veuillez réessayer.'
-            : 'Sorry, an error occurred while creating your order. Please try again.');
+          this.logger.error(
+            `Failed to create order for ${phone}: ${err.message}`,
+          );
+          await this.whatsappService.sendText(
+            phone,
+            lang === 'fr'
+              ? 'Désolé, une erreur est survenue lors de la création de la commande. Veuillez réessayer.'
+              : 'Sorry, an error occurred while creating your order. Please try again.',
+          );
           await this.resetToIdle(phone);
           return;
         }
       }
 
-      await this.whatsappService.sendText(phone, lang === 'fr'
-        ? '✅ Commande confirmée ! Un fournisseur vous contactera sous peu pour la livraison.'
-        : '✅ Order confirmed! A supplier will contact you shortly for delivery.');
+      await this.whatsappService.sendText(
+        phone,
+        lang === 'fr'
+          ? '✅ Commande confirmée ! Un fournisseur vous contactera sous peu pour la livraison.'
+          : '✅ Order confirmed! A supplier will contact you shortly for delivery.',
+      );
 
       if (orderId) {
         try {
           await this.matchingService.startAssignmentCascade(orderId);
         } catch (err: any) {
-          this.logger.warn(`BullMQ cascade failed for ${orderId}, falling back to direct supplier notification: ${err.message}`);
-          await this.notifySuppliersDirectly(orderId, session.data);
+          this.logger.warn(
+            `BullMQ cascade failed for ${orderId}, falling back to direct supplier notification: ${err.message}`,
+          );
+
+          const product = session.data.selectedProduct;
+          await this.supplierNotificationService.notifyAllActive(orderId, {
+            productName: product?.name,
+            totalXaf: product ? product.priceXaf + 1500 : undefined,
+            location: session.data.location?.manual || 'Customer location',
+            lang: session.language,
+            bottleImageMediaId: session.data.bottleImageMediaId,
+          });
         }
       }
 
       this.logger.log(`Order confirmed for ${phone} via Cash on Delivery`);
     } else {
       await this.resetToIdle(phone);
-    }
-  }
-
-  private async notifySuppliersDirectly(orderId: string, sessionData: Record<string, any>): Promise<void> {
-    try {
-      const agentRows = await this.dataSource.query(
-        `SELECT id, phone, full_name FROM agents WHERE status = 'ACTIVE' LIMIT 5`,
-      );
-
-      if (!agentRows.length) {
-        this.logger.warn(`No ACTIVE suppliers found to notify for order ${orderId}`);
-        return;
-      }
-
-      const product = sessionData.selectedProduct;
-      const totalXaf = product ? product.priceXaf + 1500 : 0;
-      const productName = product ? product.name : 'Gas Cylinder';
-      const location = sessionData.location?.manual || 'Customer location';
-
-      for (const agent of agentRows) {
-        const notificationText = `🔔 New gas order!\n\nProduct: ${productName}\nPrice: ${totalXaf} XAF\nLocation: ${location}\n\nReply with:\n1. "ACCEPT" to accept\n2. "DECLINE" to decline\n\nOrder ID: ${orderId.slice(0, 8)}`;
-
-        try {
-          await this.whatsappService.sendText(agent.phone, notificationText);
-          this.logger.log(`Direct supplier notification sent to ${agent.phone} (${agent.full_name}) for order ${orderId}`);
-        } catch (sendErr: any) {
-          this.logger.error(`Failed to send notification to supplier ${agent.phone}: ${sendErr.message}`);
-        }
-      }
-    } catch (dbErr: any) {
-      this.logger.error(`Failed to fetch suppliers for direct notification: ${dbErr.message}`);
     }
   }
 
@@ -822,8 +1073,13 @@ export class ConversationProcessor {
       title: p.name.split('(')[0].trim(),
     }));
 
-    await this.whatsappService.sendInteractiveButtons(phone, lang === 'fr'
-      ? 'Choisissez votre bouteille de gaz :' : 'Select your gas cylinder:', buttons);
+    await this.whatsappService.sendInteractiveButtons(
+      phone,
+      lang === 'fr'
+        ? 'Choisissez votre bouteille de gaz :'
+        : 'Select your gas cylinder:',
+      buttons,
+    );
   }
 
   private async sendOrderSummary(
@@ -833,18 +1089,26 @@ export class ConversationProcessor {
     const product = session.data.selectedProduct;
     const total = product.priceXaf + this.deliveryFee;
 
-    const summary = session.language === 'fr'
-      ? `Résumé de commande :\n${product.name}\nPrix produit : ${product.priceXaf} XAF\nFrais de livraison : ${this.deliveryFee} XAF\nTOTAL : ${total} XAF`
-      : `Order Summary:\n${product.name}\nProduct: ${product.priceXaf} XAF\nDelivery fee: ${this.deliveryFee} XAF\nTOTAL: ${total} XAF`;
+    const summary =
+      session.language === 'fr'
+        ? `Résumé de commande :\n${product.name}\nPrix produit : ${product.priceXaf} XAF\nFrais de livraison : ${this.deliveryFee} XAF\nTOTAL : ${total} XAF`
+        : `Order Summary:\n${product.name}\nProduct: ${product.priceXaf} XAF\nDelivery fee: ${this.deliveryFee} XAF\nTOTAL: ${total} XAF`;
 
     await this.whatsappService.sendText(phone, summary);
 
-    await this.whatsappService.sendInteractiveButtons(phone, 'Ready to confirm?', [
-      { id: 'confirm_order', title: 'Confirm Order' },
-      { id: 'change', title: 'Change Details' },
-    ]);
+    await this.whatsappService.sendInteractiveButtons(
+      phone,
+      'Ready to confirm?',
+      [
+        { id: 'confirm_order', title: 'Confirm Order' },
+        { id: 'change', title: 'Change Details' },
+      ],
+    );
 
-    await this.conversationService.setState(phone, ConversationState.ORDER_SUMMARY);
+    await this.conversationService.setState(
+      phone,
+      ConversationState.ORDER_SUMMARY,
+    );
   }
 
   private async sendCashAcknowledgement(
@@ -852,9 +1116,10 @@ export class ConversationProcessor {
     session: ConversationSession,
   ): Promise<void> {
     const lang = session.language;
-    const text = lang === 'fr'
-      ? 'Mode de paiement : Paiement en espèces à la livraison'
-      : 'Payment method: Cash on Delivery';
+    const text =
+      lang === 'fr'
+        ? 'Mode de paiement : Paiement en espèces à la livraison'
+        : 'Payment method: Cash on Delivery';
 
     await this.whatsappService.sendInteractiveButtons(phone, text, [
       { id: 'pay_confirm', title: lang === 'fr' ? 'Confirmer' : 'Confirm' },
@@ -862,13 +1127,22 @@ export class ConversationProcessor {
     ]);
   }
 
-  private findMatchingProduct(analysis: GasCylinderAnalysis, lang: string): any {
+  private findMatchingProduct(
+    analysis: GasCylinderAnalysis,
+    lang: string,
+  ): any {
     const catalog = this.catalogs[lang] || this.catalogs['en'];
-    return catalog.find((p) => Math.abs(p.sizeKg - analysis.sizeKg) < 2) || catalog[0];
+    return (
+      catalog.find((p) => Math.abs(p.sizeKg - analysis.sizeKg) < 2) ||
+      catalog[0]
+    );
   }
 
   private async resetToIdle(phone: string): Promise<void> {
     await this.conversationService.setState(phone, ConversationState.IDLE);
-    await this.handleIdle(phone, await this.conversationService.getSession(phone));
+    await this.handleIdle(
+      phone,
+      await this.conversationService.getSession(phone),
+    );
   }
 }
