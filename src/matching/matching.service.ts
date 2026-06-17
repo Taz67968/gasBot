@@ -30,13 +30,22 @@ export class MatchingService {
       [orderId],
     );
 
-    if (!orderRows.length || orderRows[0].status !== OrderStatus.CASH_ACKNOWLEDGED) {
-      this.logger.warn(`Cannot start cascade for order ${orderId} - invalid state`);
+    if (
+      !orderRows.length ||
+      orderRows[0].status !== OrderStatus.CASH_ACKNOWLEDGED
+    ) {
+      this.logger.warn(
+        `Cannot start cascade for order ${orderId} - invalid state`,
+      );
       return;
     }
 
     const pointText: string | undefined = orderRows[0].delivery_location
-      ? await this.dataSource.query(`SELECT ST_AsText(delivery_location) as point FROM orders WHERE id = $1`, [orderId])
+      ? await this.dataSource
+          .query(
+            `SELECT ST_AsText(delivery_location) as point FROM orders WHERE id = $1`,
+            [orderId],
+          )
           .then((r) => r[0]?.point)
       : undefined;
 
@@ -62,12 +71,16 @@ export class MatchingService {
     }
 
     if (candidates.length === 0) {
-      this.logger.warn(`No geo-located agents for order ${orderId} — broadcasting to all ACTIVE agents`);
+      this.logger.warn(
+        `No geo-located agents for order ${orderId} — broadcasting to all ACTIVE agents`,
+      );
       await this.supplierNotificationService.notifyAllActive(orderId);
       return;
     }
 
-    candidates = candidates.sort((a: any, b: any) => a.distanceMeters - b.distanceMeters);
+    candidates = candidates.sort(
+      (a: any, b: any) => a.distanceMeters - b.distanceMeters,
+    );
     const firstAgent = candidates[0];
 
     const [orderDetails] = await this.dataSource.query(
@@ -93,10 +106,20 @@ export class MatchingService {
         payload,
         orderId,
       );
-      this.logger.log(`Supplier notification sent to ${firstAgent.agent.id} (${firstAgent.distanceMeters}m away) for order ${orderId}`);
+      this.logger.log(
+        `Supplier notification sent to ${firstAgent.agent.id} (${firstAgent.distanceMeters}m away) for order ${orderId}`,
+      );
     } catch (error: any) {
-      this.logger.error(`Failed to send offer to agent ${firstAgent.agent.id}: ${error.message}`);
-      await this.advanceToNextSupplier(orderId, firstAgent.agent.id, firstAgent.distanceMeters, totalXaf, candidates);
+      this.logger.error(
+        `Failed to send offer to agent ${firstAgent.agent.id}: ${error.message}`,
+      );
+      await this.advanceToNextSupplier(
+        orderId,
+        firstAgent.agent.id,
+        firstAgent.distanceMeters,
+        totalXaf,
+        candidates,
+      );
       return;
     }
 
@@ -115,12 +138,17 @@ export class MatchingService {
       });
       this.logger.log(`Enqueued START_CASCADE for order ${orderId}`);
     } catch (queueErr: unknown) {
-      const message = queueErr instanceof Error ? queueErr.message : 'Unknown error';
-      this.logger.error(`Failed to enqueue matching job for order ${orderId}: ${message}`);
+      const message =
+        queueErr instanceof Error ? queueErr.message : 'Unknown error';
+      this.logger.error(
+        `Failed to enqueue matching job for order ${orderId}: ${message}`,
+      );
       // Initial offer already sent, continue without queue state
     }
 
-    this.logger.log(`Started driver matching cascade for order ${orderId} at (${lat}, ${lng})`);
+    this.logger.log(
+      `Started driver matching cascade for order ${orderId} at (${lat}, ${lng})`,
+    );
   }
 
   private async advanceToNextSupplier(
@@ -130,7 +158,9 @@ export class MatchingService {
     totalXaf: number,
     candidates: any[],
   ): Promise<void> {
-    const currentIndex = candidates.findIndex((c) => c.agent.id === currentAgentId);
+    const currentIndex = candidates.findIndex(
+      (c) => c.agent.id === currentAgentId,
+    );
     const nextIndex = currentIndex + 1;
 
     if (nextIndex >= candidates.length) {
@@ -158,10 +188,20 @@ export class MatchingService {
         payload,
         orderId,
       );
-      this.logger.log(`Advanced notification to supplier ${nextCandidate.agent.id} (${nextCandidate.distanceMeters}m away) for order ${orderId}`);
+      this.logger.log(
+        `Advanced notification to supplier ${nextCandidate.agent.id} (${nextCandidate.distanceMeters}m away) for order ${orderId}`,
+      );
     } catch (error: any) {
-      this.logger.error(`Failed to offer to next supplier ${nextCandidate.agent.id}: ${error.message}`);
-      await this.advanceToNextSupplier(orderId, nextCandidate.agent.id, nextCandidate.distanceMeters, totalXaf, candidates);
+      this.logger.error(
+        `Failed to offer to next supplier ${nextCandidate.agent.id}: ${error.message}`,
+      );
+      await this.advanceToNextSupplier(
+        orderId,
+        nextCandidate.agent.id,
+        nextCandidate.distanceMeters,
+        totalXaf,
+        candidates,
+      );
     }
   }
 
@@ -171,7 +211,9 @@ export class MatchingService {
       [OrderStatus.WAITING_FOR_SUPPLIER, orderId],
     );
 
-    this.logger.log(`Order ${orderId} moved to WAITING_FOR_SUPPLIER (no suppliers found)`);
+    this.logger.log(
+      `Order ${orderId} moved to WAITING_FOR_SUPPLIER (no suppliers found)`,
+    );
 
     const [order] = await this.dataSource.query(
       `SELECT customer_id FROM orders WHERE id = $1`,

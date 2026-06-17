@@ -77,7 +77,9 @@ describe('GasBot Full Customer-to-Cash Lifecycle (E2E)', () => {
       '/webhook/whatsapp',
       express.raw({ type: 'application/json', limit: '1mb' }),
     );
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, transform: true }),
+    );
     await app.init();
 
     // Resolve core services for direct inspection
@@ -88,7 +90,9 @@ describe('GasBot Full Customer-to-Cash Lifecycle (E2E)', () => {
     dataSource = moduleFixture.get(DataSource);
 
     // Clean slate for test run
-    await dataSource.query('TRUNCATE TABLE payments, orders, customers, agents RESTART IDENTITY CASCADE');
+    await dataSource.query(
+      'TRUNCATE TABLE payments, orders, customers, agents RESTART IDENTITY CASCADE',
+    );
     await conversationService.clearSession(TEST_PHONE);
   });
 
@@ -102,30 +106,38 @@ describe('GasBot Full Customer-to-Cash Lifecycle (E2E)', () => {
     // =====================================================
     const webhookPayload = {
       object: 'whatsapp_business_account',
-      entry: [{
-        id: 'WABA_ID',
-        changes: [{
-          value: {
-            messaging_product: 'whatsapp',
-            metadata: { phone_number_id: '123456789012345' },
-            messages: [{
-              from: TEST_PHONE,
-              id: 'wamid.E2E-TEST-' + Date.now(),
-              timestamp: Math.floor(Date.now() / 1000).toString(),
-              type: 'text',
-              text: { body: 'I want to order a Total 12kg gas cylinder' }
-            }]
-          },
-          field: 'messages'
-        }]
-      }]
+      entry: [
+        {
+          id: 'WABA_ID',
+          changes: [
+            {
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: { phone_number_id: '123456789012345' },
+                messages: [
+                  {
+                    from: TEST_PHONE,
+                    id: 'wamid.E2E-TEST-' + Date.now(),
+                    timestamp: Math.floor(Date.now() / 1000).toString(),
+                    type: 'text',
+                    text: { body: 'I want to order a Total 12kg gas cylinder' },
+                  },
+                ],
+              },
+              field: 'messages',
+            },
+          ],
+        },
+      ],
     };
 
     const rawBody = Buffer.from(JSON.stringify(webhookPayload));
-    const signature = 'sha256=' + crypto
-      .createHmac('sha256', TEST_WHATSAPP_API_TOKEN)
-      .update(rawBody)
-      .digest('hex');
+    const signature =
+      'sha256=' +
+      crypto
+        .createHmac('sha256', TEST_WHATSAPP_API_TOKEN)
+        .update(rawBody)
+        .digest('hex');
 
     const webhookResponse = await request(app.getHttpServer())
       .post('/webhook/whatsapp')
@@ -137,14 +149,18 @@ describe('GasBot Full Customer-to-Cash Lifecycle (E2E)', () => {
     expect(webhookResponse.text).toContain('EVENT_RECEIVED');
 
     // Allow event emitter and async processors to settle
-    await new Promise(resolve => setTimeout(resolve, 450));
+    await new Promise((resolve) => setTimeout(resolve, 450));
 
     // =====================================================
     // STEP 2: Assert conversational state in Redis
     // =====================================================
     const session = await conversationService.getSession(TEST_PHONE);
     expect(session).toBeDefined();
-    expect([ConversationState.MAIN_MENU, ConversationState.PRODUCT_SELECT, ConversationState.CONFIRM_PRODUCT]).toContain(session.state);
+    expect([
+      ConversationState.MAIN_MENU,
+      ConversationState.PRODUCT_SELECT,
+      ConversationState.CONFIRM_PRODUCT,
+    ]).toContain(session.state);
     expect(session.language).toBe('en');
 
     // =====================================================
@@ -157,7 +173,7 @@ describe('GasBot Full Customer-to-Cash Lifecycle (E2E)', () => {
     const [order] = await dataSource.query(
       `SELECT id, reference, status, total_xaf, customer_id FROM orders 
        WHERE customer_id = $1 ORDER BY created_at DESC LIMIT 1`,
-      [customer.id]
+      [customer.id],
     );
     expect(order).toBeDefined();
     expect(order.status).toBe(OrderStatus.CASH_ACKNOWLEDGED);
@@ -169,12 +185,15 @@ describe('GasBot Full Customer-to-Cash Lifecycle (E2E)', () => {
     const testAgentId = '11111111-1111-1111-1111-111111111111'; // Pre-seeded test agent in DB
 
     // Ensure test agent exists and is active with location
-    await dataSource.query(`
+    await dataSource.query(
+      `
       INSERT INTO agents (id, phone, full_name, status, location, created_at, updated_at)
       VALUES ($1, '+237699000001', 'E2E Test Agent', 'ACTIVE', 
               ST_SetSRID(ST_MakePoint(11.5021, 3.8480), 4326)::geography, NOW(), NOW())
       ON CONFLICT (id) DO UPDATE SET status = 'ACTIVE', location = EXCLUDED.location
-    `, [testAgentId]);
+    `,
+      [testAgentId],
+    );
 
     // Start the geospatial matching cascade (this enqueues BullMQ jobs in real run)
     await matchingService.startAssignmentCascade(order.id);
@@ -183,7 +202,7 @@ describe('GasBot Full Customer-to-Cash Lifecycle (E2E)', () => {
     // We directly call the internal acceptance path for the E2E flow
     await dataSource.query(
       `UPDATE orders SET agent_id = $1, status = 'AGENT_ASSIGNED' WHERE id = $2`,
-      [testAgentId, order.id]
+      [testAgentId, order.id],
     );
 
     // =====================================================
@@ -195,7 +214,10 @@ describe('GasBot Full Customer-to-Cash Lifecycle (E2E)', () => {
       .send({ orderId: order.id });
 
     // If auth guard blocks (expected in strict mode), fall back to direct service call
-    if (paymentConfirmResponse.status === 401 || paymentConfirmResponse.status === 403) {
+    if (
+      paymentConfirmResponse.status === 401 ||
+      paymentConfirmResponse.status === 403
+    ) {
       await paymentsService.confirmCashCollectionByAgent(order.id, testAgentId);
     } else {
       expect(paymentConfirmResponse.status).toBe(200);
@@ -207,12 +229,12 @@ describe('GasBot Full Customer-to-Cash Lifecycle (E2E)', () => {
     // =====================================================
     const [finalOrder] = await dataSource.query(
       `SELECT status, total_xaf FROM orders WHERE id = $1`,
-      [order.id]
+      [order.id],
     );
     const [finalPayment] = await dataSource.query(
       `SELECT status, amount_xaf, cash_collected_by_agent_id, agent_confirmed_at 
        FROM payments WHERE order_id = $1`,
-      [order.id]
+      [order.id],
     );
 
     // Status assertions
@@ -234,6 +256,8 @@ describe('GasBot Full Customer-to-Cash Lifecycle (E2E)', () => {
     expect(finalOrder.status).toBe('DELIVERED');
     expect(finalPayment.status).toBe('PAID_BY_HAND');
 
-    console.log('✅ GasBot E2E lifecycle test passed with perfect financial reconciliation');
+    console.log(
+      '✅ GasBot E2E lifecycle test passed with perfect financial reconciliation',
+    );
   }, 45000);
 });

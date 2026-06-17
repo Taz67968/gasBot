@@ -4,8 +4,12 @@ describe('SupplierRegistrationPolicy', () => {
   const policy = new SupplierRegistrationPolicy();
 
   it('detects supplier registration intents', () => {
-    expect(policy.isSupplierRegistrationIntent('I want to register a gas supplier')).toBe(true);
-    expect(policy.isSupplierRegistrationIntent('supplier signup on whatsapp')).toBe(true);
+    expect(
+      policy.isSupplierRegistrationIntent('I want to register a gas supplier'),
+    ).toBe(true);
+    expect(
+      policy.isSupplierRegistrationIntent('supplier signup on whatsapp'),
+    ).toBe(true);
   });
 
   it('ignores unrelated messages', () => {

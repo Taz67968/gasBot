@@ -58,7 +58,10 @@ export class DispatchService {
 
     try {
       if (bottleImageMediaId) {
-        await this.whatsappService.sendText(agentPhone, headerText + `\n🖼️ Bottle image: ${bottleImageMediaId}`);
+        await this.whatsappService.sendText(
+          agentPhone,
+          headerText + `\n🖼️ Bottle image: ${bottleImageMediaId}`,
+        );
       } else {
         await this.whatsappService.sendText(agentPhone, headerText);
       }
@@ -71,10 +74,14 @@ export class DispatchService {
         );
       }
 
-      await this.whatsappService.sendInteractiveButtons(agentPhone, 'Confirm action', [
-        { id: `accept_${orderId}`, title: 'Accept' },
-        { id: `decline_${orderId}`, title: 'Decline' },
-      ]);
+      await this.whatsappService.sendInteractiveButtons(
+        agentPhone,
+        'Confirm action',
+        [
+          { id: `accept_${orderId}`, title: 'Accept' },
+          { id: `decline_${orderId}`, title: 'Decline' },
+        ],
+      );
 
       this.logger.log(
         `Supplier notification sent to ${agentPhone} for order ${orderReference}`,

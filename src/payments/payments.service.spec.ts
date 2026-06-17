@@ -72,7 +72,10 @@ describe('PaymentsService - Cash on Delivery Concurrency', () => {
       getOne: jest.fn().mockResolvedValue(mockPayment),
     });
 
-    const result = await service.confirmCashCollectionByAgent(mockOrderId, mockAgentId);
+    const result = await service.confirmCashCollectionByAgent(
+      mockOrderId,
+      mockAgentId,
+    );
 
     expect(result.success).toBe(true);
     expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
@@ -150,17 +153,28 @@ describe('PaymentsService - Cash on Delivery Concurrency', () => {
       getOne: getOneMock,
     });
 
-    const firstCall = service.confirmCashCollectionByAgent(mockOrderId, mockAgentId);
-    const secondCall = service.confirmCashCollectionByAgent(mockOrderId, 'another-agent-id');
+    const firstCall = service.confirmCashCollectionByAgent(
+      mockOrderId,
+      mockAgentId,
+    );
+    const secondCall = service.confirmCashCollectionByAgent(
+      mockOrderId,
+      'another-agent-id',
+    );
 
-    const [result1, result2] = await Promise.allSettled([firstCall, secondCall]);
+    const [result1, result2] = await Promise.allSettled([
+      firstCall,
+      secondCall,
+    ]);
 
     // At least one must have failed with ConflictException
-    const failures = [result1, result2].filter(r => r.status === 'rejected');
+    const failures = [result1, result2].filter((r) => r.status === 'rejected');
     expect(failures.length).toBeGreaterThanOrEqual(1);
 
     // At least one succeeded
-    const successes = [result1, result2].filter(r => r.status === 'fulfilled');
+    const successes = [result1, result2].filter(
+      (r) => r.status === 'fulfilled',
+    );
     expect(successes.length).toBeGreaterThanOrEqual(1);
   });
 });

@@ -108,10 +108,7 @@ export class MatchingResponseListener {
         return;
       }
 
-      if (
-        lockedOrder.agent_id !== null &&
-        lockedOrder.agent_id !== agentId
-      ) {
+      if (lockedOrder.agent_id !== null && lockedOrder.agent_id !== agentId) {
         await queryRunner.rollbackTransaction();
         await this.whatsappService.sendText(
           agentPhone,
@@ -256,10 +253,11 @@ export class MatchingResponseListener {
     agentPhone: string,
     eventOrOrderId: MessageReceivedEvent | string,
   ): Promise<void> {
-    const orderId = typeof eventOrOrderId === 'string'
-      ? eventOrOrderId
-      : ((eventOrOrderId.content.text || '').match(/[A-F0-9-]{8,}/i)?.[0] ||
-          '');
+    const orderId =
+      typeof eventOrOrderId === 'string'
+        ? eventOrOrderId
+        : (eventOrOrderId.content.text || '').match(/[A-F0-9-]{8,}/i)?.[0] ||
+          '';
 
     const [agentRow] = await this.dataSource.query(
       `SELECT id FROM agents WHERE phone = $1`,
@@ -285,7 +283,10 @@ export class MatchingResponseListener {
         'Thank you. The request has been passed to the next supplier.',
       );
 
-      if (order.status === OrderStatus.SUPPLIER_ASSIGNED && order.agent_id === agentId) {
+      if (
+        order.status === OrderStatus.SUPPLIER_ASSIGNED &&
+        order.agent_id === agentId
+      ) {
         await this.dataSource.query(
           `UPDATE orders SET agent_id = NULL, updated_at = NOW() WHERE id = $1`,
           [orderId],
