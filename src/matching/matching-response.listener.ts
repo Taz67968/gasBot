@@ -31,6 +31,12 @@ export class MatchingResponseListener {
     const text = (content.text || '').trim().toUpperCase();
 
     if (buttonId) {
+      if (buttonId.startsWith('arrived_')) {
+        const orderReference = buttonId.replace('arrived_', '');
+        await this.handleArrived(from, orderReference);
+        return;
+      }
+
       if (
         buttonId.startsWith('accept_') ||
         buttonId.startsWith('direct_accept_')
@@ -58,6 +64,7 @@ export class MatchingResponseListener {
       await this.handleTextAccept(from, text, event);
       return;
     }
+
     if (text === 'DECLINE' || text === 'REFUSER') {
       await this.handleDecline(from, event);
       return;
@@ -212,6 +219,39 @@ export class MatchingResponseListener {
     await this.handleAccept(agentPhone, orderId);
   }
 
+  private async handleArrived(
+    agentPhone: string,
+    orderReference: string,
+  ): Promise<void> {
+    const [order] = await this.dataSource.query(
+      `SELECT o.id, o.customer_id, c.phone as customerPhone
+       FROM orders o
+       JOIN customers c ON c.id = o.customer_id
+       WHERE o.reference = $1
+       LIMIT 1`,
+      [orderReference],
+    );
+
+    if (!order) {
+      await this.whatsappService.sendText(
+        agentPhone,
+        'Order not found. Please contact support.',
+      );
+      return;
+    }
+
+    await this.dispatchService.sendAssignmentArrived(
+      agentPhone,
+      orderReference,
+      order.customerPhone,
+    );
+
+    await this.whatsappService.sendText(
+      order.customerPhone,
+      `✅ Your supplier has arrived for order ${orderReference}. Please look for them.`,
+    );
+  }
+
   private async handleDecline(
     agentPhone: string,
     eventOrOrderId: MessageReceivedEvent | string,
@@ -219,7 +259,7 @@ export class MatchingResponseListener {
     const orderId = typeof eventOrOrderId === 'string'
       ? eventOrOrderId
       : ((eventOrOrderId.content.text || '').match(/[A-F0-9-]{8,}/i)?.[0] ||
-         '');
+          '');
 
     const [agentRow] = await this.dataSource.query(
       `SELECT id FROM agents WHERE phone = $1`,
@@ -227,6 +267,8 @@ export class MatchingResponseListener {
     );
 
     if (!agentRow) return;
+
+    const agentId = agentRow.id;
 
     const [order] = await this.dataSource.query(
       `SELECT id, status, agent_id FROM orders WHERE id = $1`,
@@ -242,6 +284,13 @@ export class MatchingResponseListener {
         agentPhone,
         'Thank you. The request has been passed to the next supplier.',
       );
+
+      if (order.status === OrderStatus.SUPPLIER_ASSIGNED && order.agent_id === agentId) {
+        await this.dataSource.query(
+          `UPDATE orders SET agent_id = NULL, updated_at = NOW() WHERE id = $1`,
+          [orderId],
+        );
+      }
     }
   }
 }

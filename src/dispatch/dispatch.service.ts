@@ -9,6 +9,10 @@ export interface DispatchPayload {
   estimatedDistanceMeters?: number;
   customerArea?: string;
   bottleImageMediaId?: string;
+  deliveryLat?: number;
+  deliveryLng?: number;
+  customerPhone?: string;
+  orderId?: string;
 }
 
 @Injectable()
@@ -30,13 +34,15 @@ export class DispatchService {
       estimatedDistanceMeters,
       customerArea,
       bottleImageMediaId,
+      deliveryLat,
+      deliveryLng,
     } = payload;
 
     const distanceText = estimatedDistanceMeters
       ? `${(estimatedDistanceMeters / 1000).toFixed(1)} km away`
-      : 'calculating...';
+      : 'distance not available';
 
-    const bodyText = [
+    const headerText = [
       `🚚 *New Gas Request*`,
       ``,
       `📦 Order: *${orderReference}*`,
@@ -44,15 +50,28 @@ export class DispatchService {
       `💰 Total: *${amountXaf.toLocaleString()} XAF* (includes delivery fee)`,
       `📍 Distance: *${distanceText}*`,
       customerArea ? `📌 Area: ${customerArea}` : '',
-      bottleImageMediaId ? `🖼️ Bottle Image: ${bottleImageMediaId}` : '',
       ``,
-      `Reply within 90 seconds. Tap Accept to confirm or Decline to pass.`,
+      `Tap *Accept* to take this order or *Decline* to pass.`,
     ]
       .filter(Boolean)
       .join('\n');
 
     try {
-      await this.whatsappService.sendInteractiveButtons(agentPhone, bodyText, [
+      if (bottleImageMediaId) {
+        await this.whatsappService.sendText(agentPhone, headerText + `\n🖼️ Bottle image: ${bottleImageMediaId}`);
+      } else {
+        await this.whatsappService.sendText(agentPhone, headerText);
+      }
+
+      if (deliveryLat && deliveryLng) {
+        const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${deliveryLat},${deliveryLng}`;
+        await this.whatsappService.sendText(
+          agentPhone,
+          `🗺️ *Live location:*\n${mapsUrl}`,
+        );
+      }
+
+      await this.whatsappService.sendInteractiveButtons(agentPhone, 'Confirm action', [
         { id: `accept_${orderId}`, title: 'Accept' },
         { id: `decline_${orderId}`, title: 'Decline' },
       ]);
@@ -66,6 +85,22 @@ export class DispatchService {
       );
       throw error;
     }
+  }
+
+  async sendAssignmentArrived(
+    agentPhone: string,
+    orderReference: string,
+    customerPhone?: string,
+  ): Promise<void> {
+    const phoneLine = customerPhone ? `\n👤 Customer: ${customerPhone}` : '';
+    await this.whatsappService.sendInteractiveButtons(
+      agentPhone,
+      `🚚 You have arrived at the delivery location for order *${orderReference}*.${phoneLine}`,
+      [
+        { id: `arrived_${orderReference}`, title: "I've arrived" },
+        { id: `issue_${orderReference}`, title: 'Report issue' },
+      ],
+    );
   }
 
   async sendAcceptanceConfirmationWithMap(

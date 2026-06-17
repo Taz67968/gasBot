@@ -70,6 +70,11 @@ export class MatchingService {
     candidates = candidates.sort((a: any, b: any) => a.distanceMeters - b.distanceMeters);
     const firstAgent = candidates[0];
 
+    const [orderDetails] = await this.dataSource.query(
+      `SELECT bottle_image_media_id FROM orders WHERE id = $1`,
+      [orderId],
+    );
+
     const totalXaf = orderRows[0].total_xaf || 0;
     const payload: DispatchPayload = {
       orderReference: orderId.slice(0, 8),
@@ -77,6 +82,9 @@ export class MatchingService {
       sizeKg: 12,
       amountXaf: totalXaf,
       estimatedDistanceMeters: firstAgent.distanceMeters,
+      bottleImageMediaId: orderDetails?.bottle_image_media_id || undefined,
+      deliveryLat: lat,
+      deliveryLng: lng,
     };
 
     try {
@@ -131,12 +139,17 @@ export class MatchingService {
     }
 
     const nextCandidate = candidates[nextIndex];
+    const [nextOrderDetails] = await this.dataSource.query(
+      `SELECT bottle_image_media_id FROM orders WHERE id = $1`,
+      [orderId],
+    );
     const payload: DispatchPayload = {
       orderReference: orderId.slice(0, 8),
       gasType: 'Gas Cylinder',
       sizeKg: 12,
       amountXaf: totalXaf,
       estimatedDistanceMeters: nextCandidate.distanceMeters,
+      bottleImageMediaId: nextOrderDetails?.bottle_image_media_id,
     };
 
     try {
