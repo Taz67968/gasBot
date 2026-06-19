@@ -8,6 +8,7 @@ export interface DispatchPayload {
   amountXaf: number;
   estimatedDistanceMeters?: number;
   customerArea?: string;
+  manualAddress?: string;
   bottleImageMediaId?: string;
   deliveryLat?: number;
   deliveryLng?: number;
@@ -32,7 +33,7 @@ export class DispatchService {
       sizeKg,
       amountXaf,
       estimatedDistanceMeters,
-      customerArea,
+      manualAddress,
       bottleImageMediaId,
       deliveryLat,
       deliveryLng,
@@ -49,34 +50,54 @@ export class DispatchService {
       `🛢️ Gas: *${gasType}* (${sizeKg}kg)`,
       `💰 Total: *${amountXaf.toLocaleString()} XAF* (includes delivery fee)`,
       `📍 Distance: *${distanceText}*`,
-      customerArea ? `📌 Area: ${customerArea}` : '',
       ``,
-      `Tap *Accept* to take this order or *Decline* to pass.`,
-    ]
-      .filter(Boolean)
-      .join('\n');
+      `Review the bottle image and delivery location below, then tap *Accept* or *Decline*.`,
+    ].join('\n');
 
     try {
       if (bottleImageMediaId) {
-        await this.whatsappService.sendText(
-          agentPhone,
-          headerText + `\n🖼️ Bottle image: ${bottleImageMediaId}`,
-        );
-      } else {
-        await this.whatsappService.sendText(agentPhone, headerText);
+        try {
+          await this.whatsappService.sendImage(
+            agentPhone,
+            bottleImageMediaId,
+            '🛢️ Customer bottle photo',
+          );
+        } catch (imageError: any) {
+          this.logger.warn(
+            `Could not send bottle image for order ${orderReference}: ${imageError.message}`,
+          );
+          await this.whatsappService.sendText(
+            agentPhone,
+            `🖼️ Bottle image attached to this order (media unavailable to resend).`,
+          );
+        }
       }
 
-      if (deliveryLat && deliveryLng) {
+      await this.whatsappService.sendText(agentPhone, headerText);
+
+      if (manualAddress) {
+        await this.whatsappService.sendText(
+          agentPhone,
+          `📌 *Customer address:*\n${manualAddress}`,
+        );
+      }
+
+      if (deliveryLat !== undefined && deliveryLng !== undefined) {
         const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${deliveryLat},${deliveryLng}`;
         await this.whatsappService.sendText(
           agentPhone,
-          `🗺️ *Live location:*\n${mapsUrl}`,
+          `📍 *Live GPS location:*\n${mapsUrl}`,
+        );
+      } else if (!manualAddress) {
+        await this.whatsappService.sendText(
+          agentPhone,
+          `📍 *Delivery location:* Customer location not available yet.`,
         );
       }
 
       await this.whatsappService.sendInteractiveButtons(
         agentPhone,
-        'Confirm action',
+        'Take this delivery?',
         [
           { id: `accept_${orderId}`, title: 'Accept' },
           { id: `decline_${orderId}`, title: 'Decline' },
@@ -94,19 +115,31 @@ export class DispatchService {
     }
   }
 
-  async sendAssignmentArrived(
+  async sendEnRouteArrivedButton(
     agentPhone: string,
     orderReference: string,
-    customerPhone?: string,
+    orderId: string,
   ): Promise<void> {
-    const phoneLine = customerPhone ? `\n👤 Customer: ${customerPhone}` : '';
     await this.whatsappService.sendInteractiveButtons(
       agentPhone,
-      `🚚 You have arrived at the delivery location for order *${orderReference}*.${phoneLine}`,
+      `🚗 You are on the way for order *${orderReference}*.\n\nTap below when you reach the customer location.`,
+      [{ id: `arrived_${orderId}`, title: "I've arrived" }],
+    );
+  }
+
+  async sendArrivalCustomerContact(
+    agentPhone: string,
+    orderReference: string,
+    customerPhone: string,
+  ): Promise<void> {
+    await this.whatsappService.sendText(
+      agentPhone,
       [
-        { id: `arrived_${orderReference}`, title: "I've arrived" },
-        { id: `issue_${orderReference}`, title: 'Report issue' },
-      ],
+        `✅ *Arrival confirmed* for order *${orderReference}*`,
+        ``,
+        `📞 *Customer phone:* ${customerPhone}`,
+        `Call or text the customer to let them know you have arrived.`,
+      ].join('\n'),
     );
   }
 

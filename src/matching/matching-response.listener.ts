@@ -6,6 +6,7 @@ import { MessageReceivedEvent } from '@/whatsapp/events/message-received.event';
 import { OrderStatus } from '@/common/enums/order-status.enum';
 import { WhatsappService } from '@/whatsapp/whatsapp.service';
 import { DispatchService } from '@/dispatch/dispatch.service';
+import { MatchingService } from './matching.service';
 
 /**
  * MatchingResponseListener
@@ -21,19 +22,20 @@ export class MatchingResponseListener {
     private readonly dataSource: DataSource,
     private readonly whatsappService: WhatsappService,
     private readonly dispatchService: DispatchService,
+    private readonly matchingService: MatchingService,
   ) {}
 
   @OnEvent('message.received')
   async handleSupplierResponse(event: MessageReceivedEvent): Promise<void> {
     const { from, content } = event;
 
-    const buttonId = content.buttonTitle;
+    const buttonId = content.buttonId || content.buttonTitle;
     const text = (content.text || '').trim().toUpperCase();
 
     if (buttonId) {
       if (buttonId.startsWith('arrived_')) {
-        const orderReference = buttonId.replace('arrived_', '');
-        await this.handleArrived(from, orderReference);
+        const orderId = buttonId.replace('arrived_', '');
+        await this.handleArrived(from, orderId);
         return;
       }
 
@@ -95,7 +97,7 @@ export class MatchingResponseListener {
 
     try {
       const [lockedOrder] = await queryRunner.query(
-        `SELECT id, status, agent_id FROM orders WHERE id = $1 FOR UPDATE`,
+        `SELECT id, status, agent_id, reference FROM orders WHERE id = $1 FOR UPDATE`,
         [orderId],
       );
 
@@ -118,7 +120,7 @@ export class MatchingResponseListener {
       }
 
       const alreadySameAgent =
-        lockedOrder.status === OrderStatus.SUPPLIER_ACCEPTED &&
+        lockedOrder.status === OrderStatus.EN_ROUTE &&
         lockedOrder.agent_id === agentId;
       if (alreadySameAgent) {
         await queryRunner.rollbackTransaction();
@@ -132,7 +134,7 @@ export class MatchingResponseListener {
       const nextStatus =
         lockedOrder.status === OrderStatus.WAITING_FOR_SUPPLIER
           ? OrderStatus.SUPPLIER_ASSIGNED
-          : OrderStatus.SUPPLIER_ACCEPTED;
+          : OrderStatus.EN_ROUTE;
 
       await queryRunner.query(
         `UPDATE orders 
@@ -146,40 +148,56 @@ export class MatchingResponseListener {
       this.logger.log(`Supplier ${agentId} accepted order ${orderId}`);
 
       const [orderDetails] = await this.dataSource.query(
-        `SELECT ST_AsText(delivery_location) as wkt, total_xaf FROM orders WHERE id = $1`,
+        `SELECT ST_AsText(delivery_location) as wkt, total_xaf, reference, delivery_address_text
+         FROM orders WHERE id = $1`,
         [orderId],
       );
+
+      const orderReference = orderDetails?.reference || orderId.slice(0, 8);
 
       if (orderDetails?.wkt) {
         await this.dispatchService.sendAcceptanceConfirmationWithMap(
           agentPhone,
-          orderId.slice(0, 8),
+          orderReference,
           orderDetails.wkt,
           parseInt(orderDetails.total_xaf, 10) || 0,
+        );
+      } else if (orderDetails?.delivery_address_text) {
+        await this.whatsappService.sendText(
+          agentPhone,
+          [
+            `✅ Assignment *${orderReference}* accepted.`,
+            `📌 Deliver to: ${orderDetails.delivery_address_text}`,
+            `💰 Cash to collect: ${parseInt(orderDetails.total_xaf, 10) || 0} XAF`,
+          ].join('\n'),
         );
       } else {
         await this.whatsappService.sendText(
           agentPhone,
-          `✅ Assignment confirmed for Order #${orderId.slice(0, 8)}. Proceed to the delivery location.`,
+          `✅ Assignment confirmed for Order *${orderReference}*. Proceed to the delivery location.`,
         );
       }
 
-      if (nextStatus === OrderStatus.SUPPLIER_ACCEPTED) {
-        const [order] = await this.dataSource.query(
-          `SELECT customer_id FROM orders WHERE id = $1`,
-          [orderId],
+      await this.dispatchService.sendEnRouteArrivedButton(
+        agentPhone,
+        orderReference,
+        orderId,
+      );
+
+      const [order] = await this.dataSource.query(
+        `SELECT customer_id FROM orders WHERE id = $1`,
+        [orderId],
+      );
+      if (order) {
+        const [customer] = await this.dataSource.query(
+          `SELECT phone FROM customers WHERE id = $1`,
+          [order.customer_id],
         );
-        if (order) {
-          const [customer] = await this.dataSource.query(
-            `SELECT phone FROM customers WHERE id = $1`,
-            [order.customer_id],
+        if (customer) {
+          await this.whatsappService.sendText(
+            customer.phone,
+            `✅ A supplier has accepted your order and is on the way!`,
           );
-          if (customer) {
-            await this.whatsappService.sendText(
-              customer.phone,
-              `✅ A supplier has accepted your order and is on the way!`,
-            );
-          }
         }
       }
     } catch (error: any) {
@@ -218,15 +236,15 @@ export class MatchingResponseListener {
 
   private async handleArrived(
     agentPhone: string,
-    orderReference: string,
+    orderId: string,
   ): Promise<void> {
     const [order] = await this.dataSource.query(
-      `SELECT o.id, o.customer_id, c.phone as customerPhone
+      `SELECT o.id, o.reference, o.customer_id, o.agent_id, c.phone as customer_phone
        FROM orders o
        JOIN customers c ON c.id = o.customer_id
-       WHERE o.reference = $1
+       WHERE o.id = $1
        LIMIT 1`,
-      [orderReference],
+      [orderId],
     );
 
     if (!order) {
@@ -237,15 +255,33 @@ export class MatchingResponseListener {
       return;
     }
 
-    await this.dispatchService.sendAssignmentArrived(
+    const [agentRow] = await this.dataSource.query(
+      `SELECT id FROM agents WHERE phone = $1`,
+      [agentPhone],
+    );
+
+    if (!agentRow || order.agent_id !== agentRow.id) {
+      await this.whatsappService.sendText(
+        agentPhone,
+        'You are not assigned to this order.',
+      );
+      return;
+    }
+
+    await this.dataSource.query(
+      `UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2`,
+      [OrderStatus.NEARBY, orderId],
+    );
+
+    await this.dispatchService.sendArrivalCustomerContact(
       agentPhone,
-      orderReference,
-      order.customerPhone,
+      order.reference,
+      order.customer_phone,
     );
 
     await this.whatsappService.sendText(
-      order.customerPhone,
-      `✅ Your supplier has arrived for order ${orderReference}. Please look for them.`,
+      order.customer_phone,
+      `✅ Your supplier has arrived for order ${order.reference}. Please look for them.`,
     );
   }
 
@@ -258,6 +294,10 @@ export class MatchingResponseListener {
         ? eventOrOrderId
         : (eventOrOrderId.content.text || '').match(/[A-F0-9-]{8,}/i)?.[0] ||
           '';
+
+    if (!orderId) {
+      return;
+    }
 
     const [agentRow] = await this.dataSource.query(
       `SELECT id FROM agents WHERE phone = $1`,
@@ -273,25 +313,15 @@ export class MatchingResponseListener {
       [orderId],
     );
 
-    if (
-      order &&
-      (order.status === OrderStatus.SUPPLIER_ASSIGNED ||
-        order.status === OrderStatus.WAITING_FOR_SUPPLIER)
-    ) {
-      await this.whatsappService.sendText(
-        agentPhone,
-        'Thank you. The request has been passed to the next supplier.',
-      );
-
-      if (
-        order.status === OrderStatus.SUPPLIER_ASSIGNED &&
-        order.agent_id === agentId
-      ) {
-        await this.dataSource.query(
-          `UPDATE orders SET agent_id = NULL, updated_at = NOW() WHERE id = $1`,
-          [orderId],
-        );
-      }
+    if (!order || order.agent_id) {
+      return;
     }
+
+    await this.whatsappService.sendText(
+      agentPhone,
+      'Thank you. The request has been passed to the next supplier.',
+    );
+
+    await this.matchingService.handleSupplierDecline(orderId, agentId);
   }
 }

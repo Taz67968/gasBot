@@ -12,6 +12,7 @@ import { MessageReceivedEvent } from '@/whatsapp/events/message-received.event';
 import { MatchingService } from '@/matching/matching.service';
 import { OrderService } from '@/order/order.service';
 import { SupplierNotificationService } from '@/matching/supplier-notification.service';
+import { fetchOrderDispatchData } from '@/matching/order-dispatch.helper';
 import { SupplierRegistrationPolicy } from '../supplier-registration.policy';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
@@ -1057,13 +1058,20 @@ export class ConversationProcessor {
           );
 
           const product = session.data.selectedProduct;
-          await this.supplierNotificationService.notifyAllActive(orderId, {
-            productName: product?.name,
-            totalXaf: product ? product.priceXaf + 1500 : undefined,
-            location: session.data.location?.manual || 'Customer location',
-            lang: session.language,
-            bottleImageMediaId: session.data.bottleImageMediaId,
-          });
+          const orderData = await fetchOrderDispatchData(
+            this.dataSource,
+            orderId,
+          );
+          await this.supplierNotificationService.notifyAllActive(
+            orderId,
+            orderData || {
+              id: orderId,
+              reference: orderId.slice(0, 8),
+              total_xaf: product ? product.priceXaf + 1500 : 0,
+              bottle_image_media_id: session.data.bottleImageMediaId,
+              delivery_address_text: session.data.location?.manual,
+            },
+          );
         }
       }
 

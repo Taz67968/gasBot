@@ -37,10 +37,13 @@ export class OrderService {
 
     let lat = location.lat || 0;
     let lng = location.lng || 0;
-    if (location.manual) {
+    const deliveryAddressText = location.manual
+      ? String(location.manual).trim()
+      : null;
+
+    if (location.manual && !location.lat && !location.lng) {
       lat = 0;
       lng = 0;
-      this.logger.warn(`Manual location stored as text: ${location.manual}`);
     }
 
     const reference = `GB-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
@@ -48,8 +51,11 @@ export class OrderService {
     const bottleImageMediaId = sessionData.bottleImageMediaId || null;
 
     await this.dataSource.query(
-      `INSERT INTO orders (reference, customer_id, delivery_location, total_xaf, status, bottle_image_media_id, created_at, updated_at)
-       VALUES ($1, $2, ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography, $5, $6, $7, NOW(), NOW())
+      `INSERT INTO orders (
+         reference, customer_id, delivery_location, total_xaf, status,
+         bottle_image_media_id, delivery_address_text, created_at, updated_at
+       )
+       VALUES ($1, $2, ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography, $5, $6, $7, $8, NOW(), NOW())
        RETURNING *`,
       [
         reference,
@@ -59,6 +65,7 @@ export class OrderService {
         totalXaf,
         OrderStatus.CASH_ACKNOWLEDGED,
         bottleImageMediaId,
+        deliveryAddressText,
       ],
     );
 

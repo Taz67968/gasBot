@@ -17,6 +17,7 @@ export class MessageReceivedEvent {
       | 'unknown',
     public readonly content: {
       text?: string;
+      buttonId?: string;
       buttonTitle?: string;
       listTitle?: string;
       latitude?: number;

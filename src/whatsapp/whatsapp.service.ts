@@ -227,6 +227,36 @@ export class WhatsappService {
   }
 
   /**
+   * Send an image using a WhatsApp media ID from an inbound customer upload.
+   */
+  async sendImage(
+    to: string,
+    mediaId: string,
+    caption?: string,
+  ): Promise<void> {
+    const formattedTo = formatE164(to);
+    const image: { id: string; caption?: string } = { id: mediaId };
+    if (caption) {
+      image.caption = caption;
+    }
+
+    try {
+      await this.http.post(`/${this.phoneNumberId}/messages`, {
+        messaging_product: 'whatsapp',
+        to: formattedTo,
+        type: 'image',
+        image,
+      });
+      this.logger.log(`Image sent to ${formattedTo} (media ${mediaId})`);
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to send image to ${formattedTo}: ${error.response?.data?.error?.message || error.message}`,
+      );
+      throw error;
+    }
+  }
+
+  /**
    * Send a location request prompt (user will share live or saved location).
    * WhatsApp supports this via interactive message with type "location_request".
    */

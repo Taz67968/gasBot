@@ -12,3 +12,8 @@ export interface TimeoutCascadeJob {
   agentId: string;
   attemptIndex: number;
 }
+
+export interface DeclineCascadeJob {
+  orderId: string;
+  agentId: string;
+}

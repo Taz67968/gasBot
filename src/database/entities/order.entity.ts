@@ -70,6 +70,14 @@ export class Order {
   })
   bottleImageMediaId?: string;
 
+  @Column({
+    type: 'varchar',
+    length: 500,
+    nullable: true,
+    name: 'delivery_address_text',
+  })
+  deliveryAddressText?: string;
+
   @Column({ type: 'timestamptz', nullable: true, name: 'acknowledged_at' })
   acknowledgedAt?: Date;
 
