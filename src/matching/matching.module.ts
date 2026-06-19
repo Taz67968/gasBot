@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { MatchingService } from './matching.service';
+import { MatchingCascadeService } from './matching-cascade.service';
 import { MatchingProcessor } from './matching.processor';
 import { MatchingResponseListener } from './matching-response.listener';
 import { SupplierNotificationService } from './supplier-notification.service';
@@ -25,6 +26,7 @@ import { RedisModule } from '@/redis/redis.module';
   ],
   providers: [
     MatchingService,
+    MatchingCascadeService,
     MatchingProcessor,
     MatchingResponseListener,
     SupplierNotificationService,

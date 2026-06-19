@@ -84,6 +84,14 @@ export class ConversationProcessor {
    * Small helper that resolves after `ms` milliseconds.
    * Used to hold back the reply so the user sees the typing indicator first.
    */
+  private getButtonValue(content: {
+    buttonId?: string;
+    buttonTitle?: string;
+    text?: string;
+  }): string {
+    return (content.buttonId || content.buttonTitle || content.text || '').trim();
+  }
+
   private delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
@@ -553,19 +561,20 @@ export class ConversationProcessor {
     }
 
     // Handle confirmation buttons
+    const button = this.getButtonValue(content);
     if (
-      content.buttonTitle?.includes('Yes') ||
-      content.buttonTitle?.includes('Oui') ||
-      content.buttonTitle === 'confirm_yes'
+      button === 'confirm_yes' ||
+      button.includes('Yes') ||
+      button.includes('Oui')
     ) {
       await this.sendBottleUploadOptions(phone, lang);
       return;
     }
 
     if (
-      content.buttonTitle?.includes('No') ||
-      content.buttonTitle?.includes('Non') ||
-      content.buttonTitle === 'confirm_no'
+      button === 'confirm_no' ||
+      button.includes('No') ||
+      button.includes('Non')
     ) {
       await this.sendMainMenu(phone, lang);
       await this.conversationService.setState(
@@ -971,7 +980,11 @@ export class ConversationProcessor {
     session: ConversationSession,
     content: any,
   ): Promise<void> {
-    if (content.buttonTitle?.toLowerCase().includes('confirm')) {
+    const button = this.getButtonValue(content);
+    if (
+      button === 'confirm_order' ||
+      button.toLowerCase().includes('confirm')
+    ) {
       await this.conversationService.setState(
         phone,
         ConversationState.CASH_ACKNOWLEDGEMENT,
@@ -995,11 +1008,13 @@ export class ConversationProcessor {
     content: any,
   ): Promise<void> {
     const lang = session.language;
+    const button = this.getButtonValue(content);
 
     if (
-      content.buttonTitle?.includes('Confirm') ||
-      content.buttonTitle?.includes('Pay Cash') ||
-      content.buttonTitle?.includes('Confirmer')
+      button === 'pay_confirm' ||
+      button.includes('Confirm') ||
+      button.includes('Pay Cash') ||
+      button.includes('Confirmer')
     ) {
       let orderId = session.data.orderId;
 
