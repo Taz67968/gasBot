@@ -927,9 +927,29 @@ export class ConversationProcessor {
   ): Promise<void> {
     const lang = session.language;
 
+    if (content.latitude && content.longitude) {
+      await this.conversationService.setState(
+        phone,
+        ConversationState.ORDER_SUMMARY,
+        {
+          location: {
+            ...session.data.location,
+            lat: content.latitude,
+            lng: content.longitude,
+          },
+        },
+      );
+      const updatedSession = await this.conversationService.getSession(phone);
+      await this.sendOrderSummary(phone, updatedSession);
+      return;
+    }
+
+    const button = this.getButtonValue(content);
+
     if (
-      content.buttonTitle?.includes('Yes') ||
-      content.buttonTitle?.includes('Oui')
+      button === 'share_live_location' ||
+      button.includes('Yes') ||
+      button.includes('Oui')
     ) {
       await this.whatsappService.sendLocationRequest(
         phone,
@@ -940,7 +960,26 @@ export class ConversationProcessor {
       return;
     }
 
-    await this.sendOrderSummary(phone, session);
+    if (
+      button === 'no_live_location' ||
+      button.includes('No') ||
+      button.includes('Non')
+    ) {
+      await this.conversationService.setState(
+        phone,
+        ConversationState.ORDER_SUMMARY,
+      );
+      const updatedSession = await this.conversationService.getSession(phone);
+      await this.sendOrderSummary(phone, updatedSession);
+      return;
+    }
+
+    await this.conversationService.setState(
+      phone,
+      ConversationState.ORDER_SUMMARY,
+    );
+    const updatedSession = await this.conversationService.getSession(phone);
+    await this.sendOrderSummary(phone, updatedSession);
   }
 
   async notifySuppliers(

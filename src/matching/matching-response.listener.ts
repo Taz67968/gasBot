@@ -161,6 +161,7 @@ export class MatchingResponseListener {
           orderReference,
           orderDetails.wkt,
           parseInt(orderDetails.total_xaf, 10) || 0,
+          orderDetails.delivery_address_text || undefined,
         );
       } else if (orderDetails?.delivery_address_text) {
         await this.whatsappService.sendText(

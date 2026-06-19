@@ -257,6 +257,47 @@ export class WhatsappService {
   }
 
   /**
+   * Send a map pin the recipient can open directly in WhatsApp.
+   */
+  async sendLocation(
+    to: string,
+    latitude: number,
+    longitude: number,
+    name?: string,
+    address?: string,
+  ): Promise<void> {
+    const formattedTo = formatE164(to);
+    const location: {
+      latitude: number;
+      longitude: number;
+      name?: string;
+      address?: string;
+    } = { latitude, longitude };
+
+    if (name) {
+      location.name = name;
+    }
+    if (address) {
+      location.address = address;
+    }
+
+    try {
+      await this.http.post(`/${this.phoneNumberId}/messages`, {
+        messaging_product: 'whatsapp',
+        to: formattedTo,
+        type: 'location',
+        location,
+      });
+      this.logger.log(`Location pin sent to ${formattedTo} (${latitude}, ${longitude})`);
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to send location to ${formattedTo}: ${error.response?.data?.error?.message || error.message}`,
+      );
+      throw error;
+    }
+  }
+
+  /**
    * Send a location request prompt (user will share live or saved location).
    * WhatsApp supports this via interactive message with type "location_request".
    */

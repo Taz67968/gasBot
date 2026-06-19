@@ -83,10 +83,24 @@ export class DispatchService {
       }
 
       if (deliveryLat !== undefined && deliveryLng !== undefined) {
+        try {
+          await this.whatsappService.sendLocation(
+            agentPhone,
+            deliveryLat,
+            deliveryLng,
+            'Customer live location',
+            manualAddress,
+          );
+        } catch (locationError: any) {
+          this.logger.warn(
+            `Could not send location pin for order ${orderReference}: ${locationError.message}`,
+          );
+        }
+
         const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${deliveryLat},${deliveryLng}`;
         await this.whatsappService.sendText(
           agentPhone,
-          `📍 *Live GPS location:*\n${mapsUrl}`,
+          `📍 *Navigate to customer:*\n${mapsUrl}`,
         );
       } else if (!manualAddress) {
         await this.whatsappService.sendText(
@@ -148,6 +162,7 @@ export class DispatchService {
     orderReference: string,
     deliveryLocationWkt: string,
     amountXaf: number,
+    manualAddress?: string,
   ): Promise<void> {
     const match = deliveryLocationWkt.match(/POINT\(([^ ]+) ([^)]+)\)/);
     if (!match) {
@@ -161,31 +176,53 @@ export class DispatchService {
       return;
     }
 
-    const lng = match[1];
-    const lat = match[2];
-
-    const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+    const lng = parseFloat(match[1]);
+    const lat = parseFloat(match[2]);
+    const hasGps = lat !== 0 || lng !== 0;
 
     const message = [
       `✅ *Assignment Confirmed*`,
       ``,
       `Order: *${orderReference}*`,
       `💰 Cash on delivery: *${amountXaf.toLocaleString()} XAF*`,
+      manualAddress ? `📌 Address: ${manualAddress}` : '',
       ``,
-      `🗺️ *Navigate to customer:*`,
-      mapsUrl,
-      ``,
-      `Drive safely!`,
-    ].join('\n');
+      hasGps ? `Open the location pin below to navigate.` : `Proceed to the delivery address.`,
+    ]
+      .filter(Boolean)
+      .join('\n');
 
     try {
       await this.whatsappService.sendText(agentPhone, message);
+
+      if (hasGps) {
+        try {
+          await this.whatsappService.sendLocation(
+            agentPhone,
+            lat,
+            lng,
+            'Customer delivery location',
+            manualAddress,
+          );
+        } catch (locationError: any) {
+          this.logger.warn(
+            `Could not send navigation pin for order ${orderReference}: ${locationError.message}`,
+          );
+        }
+
+        const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+        await this.whatsappService.sendText(
+          agentPhone,
+          `🗺️ *Google Maps:*\n${mapsUrl}`,
+        );
+      }
+
       this.logger.log(
-        `Map link sent to ${agentPhone} for accepted order ${orderReference}`,
+        `Navigation sent to ${agentPhone} for accepted order ${orderReference}`,
       );
     } catch (error: any) {
       this.logger.error(
-        `Failed to send map link to ${agentPhone}: ${error.message}`,
+        `Failed to send navigation to ${agentPhone}: ${error.message}`,
       );
     }
   }
