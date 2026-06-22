@@ -1,0 +1,88 @@
+# =============================================================================
+# GasBot CI Pipeline - Enterprise Grade
+# .github/workflows/ci.yml
+# =============================================================================
+# Triggered on:
+#   - Every Pull Request targeting the main branch (pre-merge gate)
+#   - Direct pushes to main (post-merge verification)
+#
+# Pipeline guarantees:
+#   1. Clean reproducible install (npm ci)
+#   2. Production build succeeds
+#   3. Strict linting (no auto-fix, fails on any violation)
+#   4. Full TypeScript type checking with tsc --noEmit (uses strict tsconfig)
+#   5. Jest unit test suite execution
+#
+# This workflow is the quality gate for all code entering the main cluster.
+# =============================================================================
+
+name: CI
+
+on:
+  # Run on all PRs opened against main (the "inbound pull request" gate)
+  pull_request:
+    branches: [main]
+
+  # Also run on direct merges / pushes to main for post-merge safety
+  push:
+    branches: [main]
+
+jobs:
+  ci:
+    name: Build • Lint • TypeCheck • Test
+    runs-on: ubuntu-latest
+
+    # Use Node.js 20 LTS (matches Dockerfile base image for parity)
+    strategy:
+      matrix:
+        node-version: [20]
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 1. Checkout source at the exact commit being validated
+      # -----------------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # 2. Setup Node.js environment (matches production runtime)
+      # -----------------------------------------------------------------------
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm' # leverages GitHub cache for faster subsequent runs
+
+      # -----------------------------------------------------------------------
+      # 3. Install exact dependency tree (reproducible via package-lock)
+      # -----------------------------------------------------------------------
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      # -----------------------------------------------------------------------
+      # 4. Production build (exercises tsc + Nest compiler + path aliases)
+      # -----------------------------------------------------------------------
+      - name: Build application
+        run: npm run build
+
+      # -----------------------------------------------------------------------
+      # 5. Strict source format & style verification (no --fix in CI)
+      #    Current package.json "lint" script always applies --fix.
+      #    We therefore invoke eslint directly to perform read-only checks.
+      # -----------------------------------------------------------------------
+      - name: Lint (strict - no auto-fix)
+        run: npx eslint "src/**/*.ts" "test/**/*.ts"
+
+      # -----------------------------------------------------------------------
+      # 6. TypeScript type verification (strict mode, no emit)
+      #    Uses the enterprise tsconfig.json (strict: true, noImplicit*, paths)
+      #    This catches any type errors the build may have missed.
+      # -----------------------------------------------------------------------
+      - name: Type check (tsc --noEmit)
+        run: npx tsc --noEmit -p tsconfig.json
+
+      # -----------------------------------------------------------------------
+      # 7. Execute the full Jest unit test suite
+      # -----------------------------------------------------------------------
+      - name: Run unit tests
+        run: npm test

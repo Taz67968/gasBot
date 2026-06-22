@@ -1,0 +1,162 @@
+version: '3.9'
+
+# =============================================================================
+# GasBot Enterprise Docker Compose Blueprint
+# =============================================================================
+# Services:
+#   - api:     NestJS backend (multi-stage prod image), port 3000, hot-reload volume,
+#              depends on DB and cache, full env injection for config validation.
+#   - postgres: PostGIS 15-3.4 (enterprise spatial DB), persistent volume, non-default
+#               credentials, health-checked for reliable startup ordering.
+#   - redis:   Redis 7-alpine with AOF persistence (--appendonly yes) for sessions,
+#              caching, queues, and WhatsApp state management.
+# =============================================================================
+# Usage:
+#   docker compose up --build          # production-like local stack
+#   docker compose down -v             # clean shutdown + remove volumes
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # API Service (GasBot NestJS Backend)
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gasbot-api
+    restart: unless-stopped
+
+    # Expose host port 3000 for external access (browser, webhooks, clients)
+    ports:
+      - "3000:3000"
+
+    # Real-time local file watching / bind mount for development iteration.
+    # Source changes on host are immediately visible inside container.
+    # node_modules is masked with anonymous volume to preserve container binaries.
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/dist
+
+    # Full environment configuration passed to container.
+    # These keys are strictly validated by the Joi schema at boot time.
+    # Missing or invalid values will cause the NestJS app to refuse startup.
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+
+      # Database (PostGIS)
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: gasbot
+      DB_PASSWORD: gasbot_dev_password
+      DB_NAME: gasbot
+
+      # Cache / Queue
+      REDIS_URL: redis://redis:6379
+
+      # Security
+      JWT_SECRET: change-this-to-a-very-long-random-string-in-production
+
+      # WhatsApp Business API (Meta)
+      WHATSAPP_API_TOKEN: your-whatsapp-permanent-access-token
+      WHATSAPP_VERIFY_TOKEN: your-webhook-verify-token
+
+      # AI / LLM
+      OPENAI_API_KEY: sk-your-openai-api-key-here
+
+    # Startup ordering guarantees DB and Redis are accepting connections
+    # before the API attempts to connect (prevents race conditions).
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+    # Attach to isolated bridge network for service discovery by hostname
+    networks:
+      - gasbot-network
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL + PostGIS Database
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgis/postgis:15-3.4
+    container_name: gasbot-postgres
+    restart: unless-stopped
+
+    # Standard operational credentials (override via .env in real deployments)
+    environment:
+      POSTGRES_USER: gasbot
+      POSTGRES_PASSWORD: gasbot_dev_password
+      POSTGRES_DB: gasbot
+      # PostGIS specific tuning (optional but recommended)
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+
+    # Expose standard Postgres port locally (useful for pgAdmin / DBeaver)
+    ports:
+      - "5432:5432"
+
+    # Named persistent volume prevents data loss on container recreation
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    # Healthcheck ensures compose waits until PostGIS is truly ready to accept
+    # queries before starting dependent services (critical for CI and dev).
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gasbot -d gasbot || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+    networks:
+      - gasbot-network
+
+  # ---------------------------------------------------------------------------
+  # Redis Cache / Message Broker
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: gasbot-redis
+    restart: unless-stopped
+
+    # Enable Append-Only File (AOF) persistence for durability.
+    # Every write is fsynced; survives restarts without data loss.
+    command: redis-server --appendonly yes --save 60 1 --loglevel warning
+
+    # Standard Redis port
+    ports:
+      - "6379:6379"
+
+    # Named volume for AOF + RDB snapshots
+    volumes:
+      - redis_data:/data
+
+    # Lightweight healthcheck using redis-cli
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+    networks:
+      - gasbot-network
+
+# =============================================================================
+# Named Volumes - Data survives `docker compose down` (explicit removal with -v)
+# =============================================================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+# =============================================================================
+# Isolated Bridge Network - enables DNS resolution by service name
+# (api can reach "postgres" and "redis" without hard-coded IPs)
+# =============================================================================
+networks:
+  gasbot-network:
+    driver: bridge

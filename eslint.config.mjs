@@ -19,7 +19,16 @@ export default tseslint.config(
       },
       sourceType: 'commonjs',
       parserOptions: {
-        projectService: true,
+        projectService: {
+          // Allow linting of test/spec files that are intentionally excluded from
+          // the main tsconfig.json (used for tsc --noEmit and production build).
+          // Exact paths required - broad ** globs are disallowed by typescript-eslint
+          // for performance reasons.
+          allowDefaultProject: [
+            'src/app.controller.spec.ts',
+            'test/app.e2e-spec.ts',
+          ],
+        },
         tsconfigRootDir: import.meta.dirname,
       },
     },
