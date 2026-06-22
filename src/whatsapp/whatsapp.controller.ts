@@ -19,6 +19,7 @@ interface WhatsappRequest extends Request {
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ConfigLoader } from '@/config/configuration';
 import { MessageReceivedEvent } from './events/message-received.event';
+import { MessageDedupService } from './message-dedup.service';
 
 @Controller('webhook/whatsapp')
 export class WhatsappController {
@@ -28,6 +29,7 @@ export class WhatsappController {
   constructor(
     config: ConfigLoader,
     private readonly eventEmitter: EventEmitter2,
+    private readonly messageDedup: MessageDedupService,
   ) {
     this.verifyToken = config.whatsappVerifyToken;
   }
@@ -102,6 +104,12 @@ export class WhatsappController {
           for (const msg of messages) {
             const from = msg.from;
             const messageId = msg.id;
+
+            if (!this.messageDedup.consume(messageId)) {
+              this.logger.debug(`Skipping duplicate webhook for message ${messageId}`);
+              continue;
+            }
+
             const timestamp = msg.timestamp;
             const type = msg.type || 'unknown';
 

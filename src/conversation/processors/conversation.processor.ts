@@ -111,9 +111,25 @@ export class ConversationProcessor {
     return rows.length ? rows[0] : null;
   }
 
+  private isSupplierOrderAction(content: MessageReceivedEvent['content']): boolean {
+    const buttonId = content.buttonId || content.buttonTitle || '';
+    return (
+      buttonId.startsWith('accept_') ||
+      buttonId.startsWith('decline_') ||
+      buttonId.startsWith('direct_accept_') ||
+      buttonId.startsWith('direct_decline_') ||
+      buttonId.startsWith('arrived_')
+    );
+  }
+
   @OnEvent('message.received')
   async handleMessageReceived(event: MessageReceivedEvent): Promise<void> {
     const { from, messageId, content, type } = event;
+
+    if (this.isSupplierOrderAction(content)) {
+      return;
+    }
+
     const incomingText =
       `${content.text || ''} ${content.buttonTitle || ''}`.trim();
 
@@ -147,13 +163,6 @@ export class ConversationProcessor {
         incomingText.toLowerCase() === 'retour');
 
     if (isCancelIntent) {
-      const lang = (await this.conversationService.getSession(from)).language;
-      await this.whatsappService.sendText(
-        from,
-        lang === 'fr'
-          ? '↩ Retour au menu principal.'
-          : '↩ Going back to the start.',
-      );
       await this.resetToIdle(from);
       return;
     }
@@ -234,18 +243,13 @@ export class ConversationProcessor {
     const lang = session.language;
     const welcomeText =
       lang === 'fr'
-        ? 'Bienvenue chez GasBot ! 🚀\nCommandez votre gaz en quelques clics.'
-        : 'Welcome to GasBot! 🚀\nOrder your gas in a few taps.';
+        ? 'Bienvenue chez GasBot ! 🚀\nCommandez votre gaz en quelques clics.\n\nChoisissez votre langue :'
+        : 'Welcome to GasBot! 🚀\nOrder your gas in a few taps.\n\nChoose your language:';
 
-    await this.whatsappService.sendText(phone, welcomeText);
-    await this.whatsappService.sendInteractiveButtons(
-      phone,
-      lang === 'fr' ? 'Choisissez votre langue :' : 'Choose your language:',
-      [
-        { id: 'lang_en', title: 'English' },
-        { id: 'lang_fr', title: 'Français' },
-      ],
-    );
+    await this.whatsappService.sendInteractiveButtons(phone, welcomeText, [
+      { id: 'lang_en', title: 'English' },
+      { id: 'lang_fr', title: 'Français' },
+    ]);
     await this.conversationService.setState(
       phone,
       ConversationState.LANGUAGE_SELECT,
@@ -306,8 +310,7 @@ export class ConversationProcessor {
         ? 'Bienvenue chez GasBot ! 🚀\nJe vous aide à obtenir du gaz ou à devenir fournisseur.'
         : 'Welcome to GasBot! 🚀\nI help you get gas or become a supplier.';
 
-    await this.whatsappService.sendText(phone, welcomeText);
-    await this.sendRoleSelection(phone, chosenLang);
+    await this.sendRoleSelection(phone, chosenLang, welcomeText);
     await this.conversationService.setState(
       phone,
       ConversationState.ROLE_SELECT,
@@ -367,15 +370,22 @@ export class ConversationProcessor {
     await this.conversationService.setState(phone, ConversationState.MAIN_MENU);
   }
 
-  private async sendRoleSelection(phone: string, lang: string): Promise<void> {
-    const text =
+  private async sendRoleSelection(
+    phone: string,
+    lang: string,
+    introText?: string,
+  ): Promise<void> {
+    const rolePrompt =
       lang === 'fr' ? 'Sélectionnez votre rôle :' : 'Please select your role:';
     const hintText =
       lang === 'fr'
         ? 'Tapez *annuler* pour revenir en arrière.'
         : 'Type *cancel* to go back.';
-    await this.whatsappService.sendText(phone, hintText);
-    await this.whatsappService.sendInteractiveButtons(phone, text, [
+    const body = [introText, introText ? '' : null, rolePrompt, '', hintText]
+      .filter((line) => line !== null)
+      .join('\n');
+
+    await this.whatsappService.sendInteractiveButtons(phone, body, [
       {
         id: 'role_supplier',
         title: lang === 'fr' ? 'Fournisseur' : 'Supplier',
@@ -1160,14 +1170,12 @@ export class ConversationProcessor {
 
     const summary =
       session.language === 'fr'
-        ? `Résumé de commande :\n${product.name}\nPrix produit : ${product.priceXaf} XAF\nFrais de livraison : ${this.deliveryFee} XAF\nTOTAL : ${total} XAF`
-        : `Order Summary:\n${product.name}\nProduct: ${product.priceXaf} XAF\nDelivery fee: ${this.deliveryFee} XAF\nTOTAL: ${total} XAF`;
-
-    await this.whatsappService.sendText(phone, summary);
+        ? `Résumé de commande :\n${product.name}\nPrix produit : ${product.priceXaf} XAF\nFrais de livraison : ${this.deliveryFee} XAF\nTOTAL : ${total} XAF\n\nConfirmer la commande ?`
+        : `Order Summary:\n${product.name}\nProduct: ${product.priceXaf} XAF\nDelivery fee: ${this.deliveryFee} XAF\nTOTAL: ${total} XAF\n\nReady to confirm?`;
 
     await this.whatsappService.sendInteractiveButtons(
       phone,
-      'Ready to confirm?',
+      summary,
       [
         { id: 'confirm_order', title: 'Confirm Order' },
         { id: 'change', title: 'Change Details' },

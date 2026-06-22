@@ -43,16 +43,25 @@ export class DispatchService {
       ? `${(estimatedDistanceMeters / 1000).toFixed(1)} km away`
       : 'distance not available';
 
-    const headerText = [
+    const hasGps =
+      deliveryLat !== undefined &&
+      deliveryLng !== undefined &&
+      (deliveryLat !== 0 || deliveryLng !== 0);
+
+    const offerBody = [
       `🚚 *New Gas Request*`,
       ``,
       `📦 Order: *${orderReference}*`,
       `🛢️ Gas: *${gasType}* (${sizeKg}kg)`,
       `💰 Total: *${amountXaf.toLocaleString()} XAF* (includes delivery fee)`,
       `📍 Distance: *${distanceText}*`,
+      manualAddress ? `📌 Address: *${manualAddress}*` : '',
+      hasGps ? `📍 Live GPS pin attached below.` : '',
       ``,
-      `Review the bottle image and delivery location below, then tap *Accept* or *Decline*.`,
-    ].join('\n');
+      `Tap *Accept* or *Decline* below.`,
+    ]
+      .filter(Boolean)
+      .join('\n');
 
     try {
       if (bottleImageMediaId) {
@@ -66,28 +75,15 @@ export class DispatchService {
           this.logger.warn(
             `Could not send bottle image for order ${orderReference}: ${imageError.message}`,
           );
-          await this.whatsappService.sendText(
-            agentPhone,
-            `🖼️ Bottle image attached to this order (media unavailable to resend).`,
-          );
         }
       }
 
-      await this.whatsappService.sendText(agentPhone, headerText);
-
-      if (manualAddress) {
-        await this.whatsappService.sendText(
-          agentPhone,
-          `📌 *Customer address:*\n${manualAddress}`,
-        );
-      }
-
-      if (deliveryLat !== undefined && deliveryLng !== undefined) {
+      if (hasGps) {
         try {
           await this.whatsappService.sendLocation(
             agentPhone,
-            deliveryLat,
-            deliveryLng,
+            deliveryLat!,
+            deliveryLng!,
             'Customer live location',
             manualAddress,
           );
@@ -96,22 +92,11 @@ export class DispatchService {
             `Could not send location pin for order ${orderReference}: ${locationError.message}`,
           );
         }
-
-        const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${deliveryLat},${deliveryLng}`;
-        await this.whatsappService.sendText(
-          agentPhone,
-          `📍 *Navigate to customer:*\n${mapsUrl}`,
-        );
-      } else if (!manualAddress) {
-        await this.whatsappService.sendText(
-          agentPhone,
-          `📍 *Delivery location:* Customer location not available yet.`,
-        );
       }
 
       await this.whatsappService.sendInteractiveButtons(
         agentPhone,
-        'Take this delivery?',
+        offerBody,
         [
           { id: `accept_${orderId}`, title: 'Accept' },
           { id: `decline_${orderId}`, title: 'Decline' },
@@ -186,15 +171,14 @@ export class DispatchService {
       `Order: *${orderReference}*`,
       `💰 Cash on delivery: *${amountXaf.toLocaleString()} XAF*`,
       manualAddress ? `📌 Address: ${manualAddress}` : '',
+      hasGps ? `📍 Open the location pin below to navigate.` : `Proceed to the delivery address.`,
       ``,
-      hasGps ? `Open the location pin below to navigate.` : `Proceed to the delivery address.`,
+      `Drive safely!`,
     ]
       .filter(Boolean)
       .join('\n');
 
     try {
-      await this.whatsappService.sendText(agentPhone, message);
-
       if (hasGps) {
         try {
           await this.whatsappService.sendLocation(
@@ -209,13 +193,9 @@ export class DispatchService {
             `Could not send navigation pin for order ${orderReference}: ${locationError.message}`,
           );
         }
-
-        const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
-        await this.whatsappService.sendText(
-          agentPhone,
-          `🗺️ *Google Maps:*\n${mapsUrl}`,
-        );
       }
+
+      await this.whatsappService.sendText(agentPhone, message);
 
       this.logger.log(
         `Navigation sent to ${agentPhone} for accepted order ${orderReference}`,
