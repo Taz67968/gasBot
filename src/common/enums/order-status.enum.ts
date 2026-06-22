@@ -1,0 +1,16 @@
+/**
+ * Order lifecycle states for the strict Cash-on-Delivery / Pay-by-Hand flow.
+ * The CASH_ACKNOWLEDGED state is critical before agent assignment.
+ */
+export enum OrderStatus {
+  PENDING = 'PENDING',
+  CASH_ACKNOWLEDGED = 'CASH_ACKNOWLEDGED',
+  SUPPLIER_ASSIGNED = 'SUPPLIER_ASSIGNED',
+  SUPPLIER_ACCEPTED = 'SUPPLIER_ACCEPTED',
+  SUPPLIER_DECLINED = 'SUPPLIER_DECLINED',
+  EN_ROUTE = 'EN_ROUTE',
+  NEARBY = 'NEARBY',
+  DELIVERED = 'DELIVERED',
+  CANCELLED = 'CANCELLED',
+  WAITING_FOR_SUPPLIER = 'WAITING_FOR_SUPPLIER',
+}

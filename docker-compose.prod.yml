@@ -1,0 +1,148 @@
+version: '3.9'
+
+# =============================================================================
+# GasBot Production Docker Compose (Cloud-Optimized)
+# Suitable for AWS ECS, Railway, DigitalOcean App Platform, etc.
+# =============================================================================
+
+services:
+  api:
+    image: gasbot-api:latest
+    container_name: gasbot-api-prod
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    # Hard memory + swap limits (critical for cloud stability)
+    mem_limit: 1G
+    memswap_limit: 1G          # No swap allowed beyond memory limit
+    mem_swappiness: 0
+
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+
+      # Database (PostGIS) - use managed service in production
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+
+      # Redis (managed)
+      REDIS_URL: ${REDIS_URL}
+
+      # Security
+      JWT_SECRET: ${JWT_SECRET}
+
+      # WhatsApp Business API
+      WHATSAPP_API_TOKEN: ${WHATSAPP_API_TOKEN}
+      WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID}
+
+      # OpenAI
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+
+    ports:
+      - "3000:3000"
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    # Automatic recovery
+    restart: unless-stopped
+
+  # Note: In true cloud production you usually run Postgres and Redis as managed services.
+  # The services below are shown only for self-hosted or hybrid scenarios.
+
+  postgres:
+    image: postgis/postgis:15-3.4
+    container_name: gasbot-postgres-prod
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '1.0'
+          memory: 1G
+    mem_limit: 2G
+    memswap_limit: 2G
+    mem_swappiness: 10
+
+    environment:
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    ports:
+      - "5432:5432"
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  redis:
+    image: redis:7-alpine
+    container_name: gasbot-redis-prod
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.75'
+          memory: 512M
+    mem_limit: 512M
+    memswap_limit: 512M
+
+    command: redis-server --appendonly yes --maxmemory 400mb --maxmemory-policy allkeys-lru
+
+    volumes:
+      - redis_data:/data
+
+    ports:
+      - "6379:6379"
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+# Production networks (use external networks in real ECS/Railway setups)
+networks:
+  default:
+    driver: bridge
